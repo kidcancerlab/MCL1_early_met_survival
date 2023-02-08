@@ -36,19 +36,19 @@ set.seed(888)
 
 # Load Datasets
 
-Early (day 14) and Late (day 35) timepoints
+Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
 
 ```{r load}
 #### D14 ####
 # Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 14
 d14_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0082/filtered_feature_bc_matrix",
-                        species_pattern = "^hg19_")
+                             species_pattern = "^hg19_")
 
 # Subset for QC
 d14_positive <- subset(d14_positive,
-                        subset = nCount_RNA > 800 &
-                        nCount_RNA < 11000 &
-			percent.mt < 20)
+                       subset = nCount_RNA > 800 &
+                         nCount_RNA < 11000 &
+                         percent.mt < 20)
 
 ## Add labels to metadata
 d14_positive$timepoint <- "Day 14"
@@ -58,7 +58,7 @@ d14_positive$selection <- "mCherry+"
 #### D35 ####
 # Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 35
 d35_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0084/filtered_feature_bc_matrix",
-                            species_pattern = "^hg19_")
+                             species_pattern = "^hg19_")
 
 ## Add labels to metadata
 d35_positive$timepoint <- "Day 35"
@@ -67,21 +67,21 @@ d35_positive$selection <- "mCherry+"
 
 #Subset for QC
 d35_positive <- subset(d35_positive,
-                        subset = nCount_RNA > 800 &
-                        nCount_RNA < 40000 &
-			percent.mt < 20)
+                       subset = nCount_RNA > 800 &
+                         nCount_RNA < 40000 &
+                         percent.mt < 20)
 
 #### Mouse ####
 #### D14 ####
 # Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 14
 md14_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0082/filtered_feature_bc_matrix",
-                        species_pattern = "^mm10_")
+                              species_pattern = "^mm10_")
 
 # Subset for QC
 md14_positive <- subset(md14_positive,
                         subset = nCount_RNA > 800 &
-                        nCount_RNA < 7000 &
-			percent.mt < 20)
+                          nCount_RNA < 7000 &
+                          percent.mt < 20)
 
 ## Add labels to metadata
 md14_positive$timepoint <- "Day 14"
@@ -91,7 +91,7 @@ md14_positive$selection <- "mCherry+"
 #### D35 ####
 # Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 30
 md35_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0084/filtered_feature_bc_matrix",
-                            species_pattern = "^mm10_")
+                              species_pattern = "^mm10_")
 
 ## Add labels to metadata
 md35_positive$timepoint <- "Day 35"
@@ -101,99 +101,143 @@ md35_positive$selection <- "mCherry+"
 #Subset for QC
 md35_positive <- subset(md35_positive,
                         subset = nCount_RNA > 800 &
-                        nCount_RNA < 20000 &
-			percent.mt < 10)
+                          nCount_RNA < 20000 &
+                          percent.mt < 10)
 ```
 
 ```{r processing}
 # Human
 tumor <- merge(d14_positive, y = d35_positive,
-                add.cell.ids = c("d14", "d35"),
-                project = "Early vs Late OS Mets")
+               add.cell.ids = c("d14", "d35"),
+               project = "Early vs Late OS Mets")
 
 tumor <- NormalizeData(tumor) %>%
   ScaleData() %>%
   FindVariableFeatures()
-tumor <- RunPCA(tumor, features = VariableFeatures(tumor)) %>%
+tumor <- RunPCA(tumor,
+                features = VariableFeatures(tumor)) %>%
   FindNeighbors(dims = 1:20) %>%
   FindClusters(resolution = 0.15) %>%
   RunUMAP(dims = 1:20)
 
-DimPlot(tumor, reduction = "umap", pt.size = 1, label = T) + coord_fixed()
+DimPlot(tumor,
+        reduction = "umap",
+        pt.size = 1,
+        label = T) +
+  coord_fixed()
 
-DimPlot(tumor, reduction = "umap", pt.size = 1, label = T, split.by = "group") + coord_fixed()
+DimPlot(tumor,
+        reduction = "umap",
+        pt.size = 1,
+        label = T,
+        split.by = "group") +
+  coord_fixed()
 
 # Mouse
 microenv <- merge(md14_positive, y = md30_positive,
-                add.cell.ids = c("d14", "d35"),
-                project = "Early vs Late OS Mets")
+                  add.cell.ids = c("d14", "d35"),
+                  project = "Early vs Late OS Mets")
 
 microenv <- NormalizeData(microenv) %>%
   ScaleData() %>%
   FindVariableFeatures()
-microenv <- RunPCA(microenv, features = VariableFeatures(microenv)) %>%
+microenv <- RunPCA(microenv,
+                   features = VariableFeatures(microenv)) %>%
   FindNeighbors(dims = 1:20) %>%
   FindClusters(resolution = 0.15) %>%
   RunUMAP(dims = 1:20)
 
-DimPlot(microenv, reduction = "umap", pt.size = 1, label = T) + coord_fixed()
+DimPlot(microenv,
+        reduction = "umap",
+        pt.size = 1,
+        label = T) +
+  coord_fixed()
 
-DimPlot(microenv, reduction = "umap", pt.size = 1, label = T, split.by = "group") + coord_fixed()
+DimPlot(microenv,
+        reduction = "umap",
+        pt.size = 1,
+        label = T,
+        split.by = "group") +
+  coord_fixed()
 
 # Save
-save(tumor, file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/tumor.RData")
-save(microenv, file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/microenv.RData")
+if(!dir.exists("Data")) {
+  dir.create("Data")
+}
+
+
+save(tumor,
+     file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/tumor.RData")
+save(microenv,
+     file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/microenv.RData")
 ```
 
 ```{r geneplots}
-dot_plot <- DotPlot(tumor, features = c("BCL2", 
-                            "BCL2L1",
-                            "BCL2L2",
-                            "BAD",
-                            "BAX",
-                            "MCL1"), group.by = "group", scale=F, cols = "Spectral") + RotatedAxis()
+# Generate plots to show gene expression of key genes
+# between d14 and d35
+if(!dir.exists("Figures")) {
+  dir.create("Figures")
+}
 
-pdf("/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Figures/dot_plot.pdf",
+dot_plot <- DotPlot(tumor,
+                    features = c("BCL2", 
+                                 "BCL2L1",
+                                 "BCL2L2",
+                                 "BAD",
+                                 "BAX",
+                                 "MCL1"),
+                    group.by = "group",
+                    scale=F,
+                    cols = "Spectral") +
+  RotatedAxis()
+
+pdf("Figures/dot_plot.pdf",
     width = 7,
     height = 4)
 dot_plot +
   coord_fixed() 
 dev.off()
 
-vln_plot <- VlnPlot(tumor, features = c("BCL2", 
-                            "BCL2L1",
-                            "BCL2L2",
-                            "BAD",
-                            "BAX",
-                            "MCL1"), group.by = "group") + RotatedAxis()
+vln_plot <- VlnPlot(tumor,
+                    features = c("BCL2", 
+                                 "BCL2L1",
+                                 "BCL2L2",
+                                 "BAD",
+                                 "BAX",
+                                 "MCL1"),
+                    group.by = "group") +
+  RotatedAxis()
 
-pdf("/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Figures/vln_plot.pdf",
+pdf("Figures/vln_plot.pdf",
     width = 6,
     height = 5)
 vln_plot 
 dev.off()
 
+feature_plot <- FeaturePlot(tumor,
+                            features = c("BCL2", 
+                                         "BCL2L1",
+                                         "BCL2L2",
+                                         "BAD",
+                                         "BAX",
+                                         "MCL1"),
+                            split.by = "group",
+                            order = T)
 
-feature_plot <- FeaturePlot(tumor, features = c("BCL2", 
-                            "BCL2L1",
-                            "BCL2L2",
-                            "BAD",
-                            "BAX",
-                            "MCL1"), split.by = "group", order = T)
-
-pdf("/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Figures/feature_plot.pdf",
+pdf("Figures/feature_plot.pdf",
     width = 6,
     height = 16)
 feature_plot 
 dev.off()
-
 ```
 
 ```{r cc}
 library(rrrSingleCellUtils)
 
 # Calculate cell cycle phase
-tumor_cc <- kill_cc(tumor, cc_regress = "Y")
+tumor_cc <- kill_cc(tumor,
+                    cc_regress = "Y")
 
-save(tumor_cc, file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/tumor_cc.RData")
+save(tumor_cc,
+     file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/tumor_cc.RData")
 ```
