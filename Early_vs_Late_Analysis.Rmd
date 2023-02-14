@@ -37,7 +37,7 @@ set.seed(888)
 setwd("/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/")
 ```
 
-# Load Datasets
+# Load and Process Datasets
 
 Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
 
@@ -101,7 +101,7 @@ md35_positive$timepoint <- "Day 35"
 md35_positive$group <- "Late"
 md35_positive$selection <- "mCherry+"
 
-#Subset for QC
+# Subset for QC
 md35_positive <- subset(md35_positive,
                         subset = nCount_RNA > 800 &
                           nCount_RNA < 20000 &
@@ -186,12 +186,14 @@ dev.off()
 
 ## Human Cell Only Processing
 
-```{r human-processing}
+```{r human-processing, dependson="load"}
 # Human
+# Merge day 14 and day 35 Seurat objects together 
 tumor <- merge(d14_positive, y = d35_positive,
                add.cell.ids = c("d14", "d35"),
                project = "Early vs Late OS Mets")
 
+# Process merged object
 tumor <- NormalizeData(tumor) %>%
   ScaleData() %>%
   FindVariableFeatures()
@@ -201,13 +203,15 @@ tumor <- RunPCA(tumor,
   FindClusters(resolution = 0.15) %>%
   RunUMAP(dims = 1:20)
 
-# Save
-save(tumor, file = "Data/early_late_tumor.RData")
+# Plot UMAP
 DimPlot(tumor,
         reduction = "umap",
         pt.size = 1,
         label = T) +
   theme(aspect.ratio = 1)
+
+# Save human mCherry+ merged object
+save(tumor, file = "Data/early_late_tumor.RData")
 
 # Use timepoint naming (Day 14/Day 35) for UMAP plotting
 umap_timepoint <- DimPlot(tumor,
@@ -242,12 +246,14 @@ dev.off()
 
 ## Mouse Cell Only Processing
 
-```{r mouse-processing}
+```{r mouse-processing, dependson="load"}
 # Mouse
+# Merge day 14 and day 35 Seurat objects together 
 microenv <- merge(md14_positive, y = md35_positive,
                   add.cell.ids = c("d14", "d35"),
                   project = "Early vs Late OS Mets")
 
+# Process merged object
 microenv <- NormalizeData(microenv) %>%
   ScaleData() %>%
   FindVariableFeatures()
@@ -256,6 +262,7 @@ microenv <- RunPCA(microenv, features = VariableFeatures(microenv)) %>%
   FindClusters(resolution = 0.15) %>%
   RunUMAP(dims = 1:20)
 
+# Plot UMAP
 DimPlot(microenv,
         reduction = "umap",
         pt.size = 1, label = T) +
@@ -268,10 +275,16 @@ DimPlot(microenv,
         split.by = "group") +
   coord_fixed()
 
+# Save mouse mCherry+ merged Seurat object
 save(microenv, file = "Data/early_late_microenv.RData")
 ```
 
-```{r human_geneplots}
+# Plotting Expression: Genes of Interest
+
+## Human Cells Only: Pre-cell cycle regression
+
+```{r human_geneplots, dependson=c("load","human-processing")}
+# Dot plot of expression of genes of interest by group (early/late)
 dot_plot <- DotPlot(tumor,
                     features = c("BCL2", 
                                  "BCL2L1",
@@ -282,13 +295,15 @@ dot_plot <- DotPlot(tumor,
                     cols = "Spectral") +
   RotatedAxis()
 
-pdf("Figures/dot_plot.pdf",
+# Save as pdf
+pdf("Figures/early_late_dot_plot.pdf",
     width = 7,
     height = 4)
 dot_plot +
   coord_fixed() 
 dev.off()
 
+# Violin plot of expression of genes of interest by group (early/late)
 vln_plot <- VlnPlot(tumor,
                     features = c("BCL2", 
                                  "BCL2L1",
@@ -297,12 +312,14 @@ vln_plot <- VlnPlot(tumor,
                     group.by = "group") +
   RotatedAxis()
 
-pdf("Figures/vln_plot.pdf",
+# Save as pdf
+pdf("Figures/early_late_vln_plot.pdf",
     width = 6,
     height = 5)
 vln_plot 
 dev.off()
 
+# Feature plot (UMAP) of expression of genes of interest by group (early/late)
 feature_plot <- FeaturePlot(tumor,
                             features = c("BCL2", 
                                          "BCL2L1",
@@ -312,25 +329,54 @@ feature_plot <- FeaturePlot(tumor,
                             order = T) +
   theme(aspect.ratio = 1)
 
-pdf("Figures/feature_plot.pdf",
+# Save as pdf
+pdf("Figures/early_late_feature_plot.pdf",
     width = 6,
     height = 12)
 feature_plot 
 dev.off()
 ```
 
+## Human Cells Only: Post-cell cycle regression
 
-```{r cc}
+Regress out cell cycle genes so that the dataset does not cluster on the UMAP 
+by cell cycle gene expression.
+
+```{r cc, dependson=c("load","human-processing")}
+# Load Roberts lab package for kill_cc() function
 library(rrrSingleCellUtils)
 
-# Calculate cell cycle phase
+# Calculate cell cycle phase and view its effects on clustering
+# Note: default for kill_cc() is not performing cell cycle regression
+kill_cc(tumor)
+
+# Save as pdf
+pdf("Figures/early_late_tumor_pre-kill_cc.pdf",
+    width = 5,
+    height = 5)
+kill_cc(tumor)
+dev.off()
+
+# Calculate cell cycle phase and remove its effects on clustering
 tumor_cc <- kill_cc(tumor,
                     cc_regress = "Y")
 
+# Rerun find neighbors/clusters to reinstate previous settings w/o cell cycle
 tumor_cc <- FindNeighbors(tumor_cc, dims = 1:20) %>%
   FindClusters(resolution = 0.15) %>%
   RunUMAP(dims = 1:20)
 
+# Plot tumor UMAP after cell cycle genes are regressed out
+kill_cc(tumor_cc)
+
+# Save as pdf
+pdf("Figures/early_late_post-kill_cc.pdf",
+    width = 5,
+    height = 5)
+kill_cc(tumor_cc)
+dev.off()
+
+# Plot tumor UMAP by timepoint post cell cycle regression
 umap_cc <- DimPlot(tumor_cc,
                    reduction = "umap",
                    pt.size = 1,
@@ -339,11 +385,75 @@ umap_cc <- DimPlot(tumor_cc,
   theme(aspect.ratio = 1)
 umap_cc
 
-pdf("Figures/umap_cc_bytrtment.pdf",
+# Save as pdf
+pdf("Figures/early_late_umap_cc_bytrtment.pdf",
     width = 5,
     height = 5)
 umap_cc
 dev.off()
 
+# Save the cell cycle regressed tumor object
 save(tumor_cc, file = "Data/early_late_tumor_cc.RData")
 ```
+
+Repeat plots of gene expression post cell cycle regression.
+
+```{r human_geneplots_postcc, dependson=c("load","human-processing","cc")}
+# Dot plot of expression of genes of interest by group (early/late)
+dot_plot <- DotPlot(tumor_cc,
+                    features = c("BCL2", 
+                                 "BCL2L1",
+                                 "BCL2L2",
+                                 "MCL1"),
+                    group.by = "group",
+                    scale = F,
+                    cols = "Spectral") +
+  RotatedAxis()
+
+# Save as pdf
+pdf("Figures/early_late_dot_plot_postccr.pdf",
+    width = 7,
+    height = 4)
+dot_plot +
+  coord_fixed() 
+dev.off()
+
+# Violin plot of expression of genes of interest by group (early/late)
+vln_plot <- VlnPlot(tumor_cc,
+                    features = c("BCL2", 
+                                 "BCL2L1",
+                                 "BCL2L2",
+                                 "MCL1"),
+                    group.by = "group") +
+  RotatedAxis()
+
+# Save as pdf
+pdf("Figures/early_late_vln_plot_postccr.pdf",
+    width = 6,
+    height = 5)
+vln_plot 
+dev.off()
+
+# Feature plot (UMAP) of expression of genes of interest by group (early/late)
+feature_plot <- FeaturePlot(tumor_cc,
+                            features = c("BCL2", 
+                                         "BCL2L1",
+                                         "BCL2L2",
+                                         "MCL1"),
+                            split.by = "group",
+                            order = T) +
+  theme(aspect.ratio = 1)
+
+# Save as pdf
+pdf("Figures/early_late_feature_plot_postccr.pdf",
+    width = 6,
+    height = 12)
+feature_plot 
+dev.off()
+```
+
+
+```{r, cache=FALSE}
+sessionInfo()
+```
+
