@@ -32,6 +32,9 @@ library(rrrSingleCellUtils)
 
 # Set random generator seed to facilitate reproducibility
 set.seed(888)
+
+# set working directory 
+setwd("/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/")
 ```
 
 # Load Datasets
@@ -105,7 +108,85 @@ md35_positive <- subset(md35_positive,
                           percent.mt < 10)
 ```
 
-```{r processing}
+## Load and Process Mouse and Human Cells Together
+
+```{r all_load}
+#### D14 ####
+# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 14
+d14_positive_all <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0082/filtered_feature_bc_matrix",
+                                 species_pattern = "^hg19_|^mm10")
+
+# Subset for QC
+d14_positive_all <- subset(d14_positive_all,
+                           subset = nCount_RNA > 800 &
+                             nCount_RNA < 10000 &
+                             percent.mt < 20)
+
+## Add labels to metadata
+d14_positive_all$timepoint <- "Day 14"
+d14_positive_all$group <- "Early"
+d14_positive_all$selection <- "mCherry+"
+
+#### D35 ####
+# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 35
+d35_positive_all <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0084/filtered_feature_bc_matrix",
+                                 species_pattern = "^hg19_|^mm10")
+
+## Add labels to metadata
+d35_positive_all$timepoint <- "Day 35"
+d35_positive_all$group <- "Late"
+d35_positive_all$selection <- "mCherry+"
+
+#Subset for QC
+d35_positive_all <- subset(d35_positive_all,
+                           subset = nCount_RNA > 800 &
+                             nCount_RNA < 40000 &
+                             percent.mt < 20)
+
+tumor_all <- merge(d14_positive_all, y = d35_positive_all,
+                   add.cell.ids = c("d14", "d35"),
+                   project = "Early vs Late OS Mets")
+
+tumor_all <- NormalizeData(tumor_all) %>%
+  ScaleData() %>%
+  FindVariableFeatures()
+tumor_all <- RunPCA(tumor_all, features = VariableFeatures(tumor_all)) %>%
+  FindNeighbors(dims = 1:20) %>%
+  FindClusters(resolution = 0.15) %>%
+  RunUMAP(dims = 1:20)
+
+# Save
+save(tumor_all, file = "Data/early_late_tumor_allcelltypes.RData")
+
+umap_all <- DimPlot(tumor_all,
+                    reduction = "umap",
+                    pt.size = 1,
+                    label = T) +
+  theme(aspect.ratio = 1)
+
+pdf("Figures/early_late_umap_all.pdf",
+    width = 5,
+    height = 5)
+umap_all
+dev.off()
+
+umap_timepoint_all <- DimPlot(tumor_all,
+                              reduction = "umap",
+                              pt.size = 1,
+                              label = T,
+                              split.by = "timepoint") +
+  theme(aspect.ratio = 1)
+
+pdf("Figures/early_late_umap_timepoint_all.pdf",
+    width = 5,
+    height = 5)
+umap_timepoint_all
+dev.off()
+```
+
+## Human Cell Only Processing
+
+```{r human-processing}
 # Human
 tumor <- merge(d14_positive, y = d35_positive,
                add.cell.ids = c("d14", "d35"),
@@ -120,37 +201,64 @@ tumor <- RunPCA(tumor,
   FindClusters(resolution = 0.15) %>%
   RunUMAP(dims = 1:20)
 
+# Save
+save(tumor, file = "Data/early_late_tumor.RData")
 DimPlot(tumor,
         reduction = "umap",
         pt.size = 1,
         label = T) +
-  coord_fixed()
+  theme(aspect.ratio = 1)
 
-DimPlot(tumor,
-        reduction = "umap",
-        pt.size = 1,
-        label = T,
-        split.by = "group") +
-  coord_fixed()
+# Use timepoint naming (Day 14/Day 35) for UMAP plotting
+umap_timepoint <- DimPlot(tumor,
+                          reduction = "umap",
+                          pt.size = 1,
+                          group.by = "timepoint",
+                          label = T) +
+  theme(aspect.ratio = 1)
+umap_timepoint
 
+pdf("Figures/early_late_umap.pdf",
+    width = 5,
+    height = 5)
+umap_timepoint
+dev.off()
+
+# Use basic naming (early/late) for UMAP plotting
+umap_group <- DimPlot(tumor,
+                      reduction = "umap",
+                      pt.size = 1,
+                      group.by = "group",
+                      label = T) +
+  theme(aspect.ratio = 1)
+umap_group
+
+pdf("Figures/early_late_umap.pdf",
+    width = 5,
+    height = 5)
+umap_group
+dev.off()
+```
+
+## Mouse Cell Only Processing
+
+```{r mouse-processing}
 # Mouse
-microenv <- merge(md14_positive, y = md30_positive,
+microenv <- merge(md14_positive, y = md35_positive,
                   add.cell.ids = c("d14", "d35"),
                   project = "Early vs Late OS Mets")
 
 microenv <- NormalizeData(microenv) %>%
   ScaleData() %>%
   FindVariableFeatures()
-microenv <- RunPCA(microenv,
-                   features = VariableFeatures(microenv)) %>%
+microenv <- RunPCA(microenv, features = VariableFeatures(microenv)) %>%
   FindNeighbors(dims = 1:20) %>%
   FindClusters(resolution = 0.15) %>%
   RunUMAP(dims = 1:20)
 
 DimPlot(microenv,
         reduction = "umap",
-        pt.size = 1,
-        label = T) +
+        pt.size = 1, label = T) +
   coord_fixed()
 
 DimPlot(microenv,
@@ -160,34 +268,17 @@ DimPlot(microenv,
         split.by = "group") +
   coord_fixed()
 
-# Save
-if(!dir.exists("Data")) {
-  dir.create("Data")
-}
-
-
-save(tumor,
-     file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/tumor.RData")
-save(microenv,
-     file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/microenv.RData")
+save(microenv, file = "Data/early_late_microenv.RData")
 ```
 
-```{r geneplots}
-# Generate plots to show gene expression of key genes
-# between d14 and d35
-if(!dir.exists("Figures")) {
-  dir.create("Figures")
-}
-
+```{r human_geneplots}
 dot_plot <- DotPlot(tumor,
                     features = c("BCL2", 
                                  "BCL2L1",
                                  "BCL2L2",
-                                 "BAD",
-                                 "BAX",
                                  "MCL1"),
                     group.by = "group",
-                    scale=F,
+                    scale = F,
                     cols = "Spectral") +
   RotatedAxis()
 
@@ -202,8 +293,6 @@ vln_plot <- VlnPlot(tumor,
                     features = c("BCL2", 
                                  "BCL2L1",
                                  "BCL2L2",
-                                 "BAD",
-                                 "BAX",
                                  "MCL1"),
                     group.by = "group") +
   RotatedAxis()
@@ -218,18 +307,18 @@ feature_plot <- FeaturePlot(tumor,
                             features = c("BCL2", 
                                          "BCL2L1",
                                          "BCL2L2",
-                                         "BAD",
-                                         "BAX",
                                          "MCL1"),
                             split.by = "group",
-                            order = T)
+                            order = T) +
+  theme(aspect.ratio = 1)
 
 pdf("Figures/feature_plot.pdf",
     width = 6,
-    height = 16)
+    height = 12)
 feature_plot 
 dev.off()
 ```
+
 
 ```{r cc}
 library(rrrSingleCellUtils)
@@ -238,6 +327,23 @@ library(rrrSingleCellUtils)
 tumor_cc <- kill_cc(tumor,
                     cc_regress = "Y")
 
-save(tumor_cc,
-     file = "/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/Data/tumor_cc.RData")
+tumor_cc <- FindNeighbors(tumor_cc, dims = 1:20) %>%
+  FindClusters(resolution = 0.15) %>%
+  RunUMAP(dims = 1:20)
+
+umap_cc <- DimPlot(tumor_cc,
+                   reduction = "umap",
+                   pt.size = 1,
+                   label = T,
+                   group.by = "timepoint") +
+  theme(aspect.ratio = 1)
+umap_cc
+
+pdf("Figures/umap_cc_bytrtment.pdf",
+    width = 5,
+    height = 5)
+umap_cc
+dev.off()
+
+save(tumor_cc, file = "Data/early_late_tumor_cc.RData")
 ```
