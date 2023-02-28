@@ -1,6 +1,6 @@
 ---
 title: "Data Analysis for Early and Late Lung-colonizing Tumors"
-author: "Emily Franz"
+author: "Emily Franz and Matt Cannon"
 date: "`r format(Sys.time(), '%m/%d/%Y')`"
 output:
     html_document:
@@ -32,16 +32,93 @@ library(rrrSingleCellUtils)
 
 # Set random generator seed to facilitate reproducibility
 set.seed(888)
+```
 
-# set working directory 
-setwd("/gpfs0/home2/gdrobertslab/lab/Analysis/Emily/MCL1_early_met_survival/")
+## Make up directory structure
+```{bash mkdirs, eval=TRUE}
+for directoryName in \
+  output \
+  output/figures \
+  output/sobjs
+do
+  if [ ! -d ${directoryName} ]
+  then
+    mkdir ${directoryName}
+  fi
+done
 ```
 
 # Load and Process Datasets
-
 Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
 
 ```{r load}
+sample_list <- read_tsv("misc/sample_cutoffs.txt")
+
+sobj_list <- list()
+
+for (i in seq_len(nrow(sample_list))) {
+    species_pattern <- sample_list$species_pattern[i]
+
+    dataset <-
+        tenx_load_qc(paste0("/home/gdrobertslab/lab/Counts/",
+                            sample_list$sample_name[i],
+                            "/filtered_feature_bc_matrix"),
+                     violin_plot = FALSE,
+                     species_pattern = species_pattern)
+
+    # Add metadata to dataset
+    for (colname in colnames(metadata)) {
+        dataset[[colname]] <- sample_list[[colname]][i]
+    }
+
+    dataset <- dataset %>%
+        subset(nFeature_RNA >= sample_list$nfeature_rna_min[i] &
+               nFeature_RNA <= sample_list$nfeature_rna_max[i] &
+               nCount_RNA   >= sample_list$ncount_rna_min[i] &
+               nCount_RNA   <= sample_list$ncount_rna_max[i] &
+               percent.mt   <= sample_list$mt_max[i]) %>%
+        process_seurat()
+
+    FeaturePlot(dataset, features = "nFeature_RNA")
+    plotted <- feature_hist(dataset) %>%
+        add_lines()
+
+    ggsave(paste0("output/figures/feature_hist_",
+                  sample_list$obj_name[i],
+                  "_filtered.png"),
+           width = 10,
+           height = 10,
+           plot = plotted)
+
+    assign(sample_list[i, "obj_name"] %>% unlist(), dataset)
+    save(list = sample_list[["obj_name"]][i],
+         file = paste0("output/rdata/",
+                       sample_list$obj_name[i],
+                       ".rds"))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #### D14 ####
 # Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 14
 d14_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0082/filtered_feature_bc_matrix",
