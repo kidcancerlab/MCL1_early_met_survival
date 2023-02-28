@@ -52,14 +52,15 @@ done
 Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
 
 ```{r load}
-sample_list <- read_tsv("misc/sample_cutoffs.txt")
+sample_list <- read_tsv("misc/sample_cutoffs.txt", show_col_types = FALSE)
 
 sobj_list <- list()
 
 for (i in seq_len(nrow(sample_list))) {
     species_pattern <- sample_list$species_pattern[i]
+    obj_name <- sample_list$obj_name[i]
 
-    dataset <-
+    sobj_list[[obj_name]] <-
         tenx_load_qc(paste0("/home/gdrobertslab/lab/Counts/",
                             sample_list$sample_name[i],
                             "/filtered_feature_bc_matrix"),
@@ -67,205 +68,39 @@ for (i in seq_len(nrow(sample_list))) {
                      species_pattern = species_pattern)
 
     # Add metadata to dataset
-    for (colname in colnames(metadata)) {
-        dataset[[colname]] <- sample_list[[colname]][i]
+    for (colname in colnames(sample_list)) {
+        sobj_list[[obj_name]][[colname]] <- sample_list[[colname]][i]
     }
 
-    dataset <- dataset %>%
-        subset(nFeature_RNA >= sample_list$nfeature_rna_min[i] &
-               nFeature_RNA <= sample_list$nfeature_rna_max[i] &
-               nCount_RNA   >= sample_list$ncount_rna_min[i] &
+    sobj_list[[obj_name]] <-
+        sobj_list[[obj_name]] %>%
+        subset(nCount_RNA   >= sample_list$ncount_rna_min[i] &
                nCount_RNA   <= sample_list$ncount_rna_max[i] &
                percent.mt   <= sample_list$mt_max[i]) %>%
         process_seurat()
 
-    FeaturePlot(dataset, features = "nFeature_RNA")
-    plotted <- feature_hist(dataset) %>%
-        add_lines()
+    plotted <-
+        feature_hist(sobj_list[[obj_name]],
+                     features = c("nCount_RNA", "percent.mt"))
 
     ggsave(paste0("output/figures/feature_hist_",
-                  sample_list$obj_name[i],
-                  "_filtered.png"),
+                  obj_name,
+                  ".png"),
            width = 10,
            height = 10,
            plot = plotted)
 
-    assign(sample_list[i, "obj_name"] %>% unlist(), dataset)
-    save(list = sample_list[["obj_name"]][i],
-         file = paste0("output/rdata/",
-                       sample_list$obj_name[i],
-                       ".rds"))
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### D14 ####
-# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 14
-d14_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0082/filtered_feature_bc_matrix",
-                             species_pattern = "^hg19_")
-
-# Subset for QC
-d14_positive <- subset(d14_positive,
-                       subset = nCount_RNA > 800 &
-                         nCount_RNA < 11000 &
-                         percent.mt < 20)
-
-## Add labels to metadata
-d14_positive$timepoint <- "Day 14"
-d14_positive$group <- "Early"
-d14_positive$selection <- "mCherry+"
-
-#### D35 ####
-# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 35
-d35_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0084/filtered_feature_bc_matrix",
-                             species_pattern = "^hg19_")
-
-## Add labels to metadata
-d35_positive$timepoint <- "Day 35"
-d35_positive$group <- "Late"
-d35_positive$selection <- "mCherry+"
-
-#Subset for QC
-d35_positive <- subset(d35_positive,
-                       subset = nCount_RNA > 800 &
-                         nCount_RNA < 40000 &
-                         percent.mt < 20)
-
-#### Mouse ####
-#### D14 ####
-# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 14
-md14_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0082/filtered_feature_bc_matrix",
-                              species_pattern = "^mm10_")
-
-# Subset for QC
-md14_positive <- subset(md14_positive,
-                        subset = nCount_RNA > 800 &
-                          nCount_RNA < 7000 &
-                          percent.mt < 20)
-
-## Add labels to metadata
-md14_positive$timepoint <- "Day 14"
-md14_positive$group <- "Early"
-md14_positive$selection <- "mCherry+"
-
-#### D35 ####
-# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 30
-md35_positive <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0084/filtered_feature_bc_matrix",
-                              species_pattern = "^mm10_")
-
-## Add labels to metadata
-md35_positive$timepoint <- "Day 35"
-md35_positive$group <- "Late"
-md35_positive$selection <- "mCherry+"
-
-# Subset for QC
-md35_positive <- subset(md35_positive,
-                        subset = nCount_RNA > 800 &
-                          nCount_RNA < 20000 &
-                          percent.mt < 10)
-```
-
-## Load and Process Mouse and Human Cells Together
-
-```{r all_load}
-#### D14 ####
-# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 14
-d14_positive_all <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0082/filtered_feature_bc_matrix",
-                                 species_pattern = "^hg19_|^mm10")
-
-# Subset for QC
-d14_positive_all <- subset(d14_positive_all,
-                           subset = nCount_RNA > 800 &
-                             nCount_RNA < 10000 &
-                             percent.mt < 20)
-
-## Add labels to metadata
-d14_positive_all$timepoint <- "Day 14"
-d14_positive_all$group <- "Early"
-d14_positive_all$selection <- "mCherry+"
-
-#### D35 ####
-# Load mCherry+ cells (tumor and surrounding microenvironment cells) from lungs collected on day 35
-d35_positive_all <- tenx_load_qc("/gpfs0/home2/gdrobertslab/lab/Counts/S0084/filtered_feature_bc_matrix",
-                                 species_pattern = "^hg19_|^mm10")
-
-## Add labels to metadata
-d35_positive_all$timepoint <- "Day 35"
-d35_positive_all$group <- "Late"
-d35_positive_all$selection <- "mCherry+"
-
-#Subset for QC
-d35_positive_all <- subset(d35_positive_all,
-                           subset = nCount_RNA > 800 &
-                             nCount_RNA < 40000 &
-                             percent.mt < 20)
-
-tumor_all <- merge(d14_positive_all, y = d35_positive_all,
-                   add.cell.ids = c("d14", "d35"),
-                   project = "Early vs Late OS Mets")
-
-tumor_all <- NormalizeData(tumor_all) %>%
-  ScaleData() %>%
-  FindVariableFeatures()
-tumor_all <- RunPCA(tumor_all, features = VariableFeatures(tumor_all)) %>%
-  FindNeighbors(dims = 1:20) %>%
-  FindClusters(resolution = 0.15) %>%
-  RunUMAP(dims = 1:20)
-
-# Save
-save(tumor_all, file = "Data/early_late_tumor_allcelltypes.RData")
-
-umap_all <- DimPlot(tumor_all,
-                    reduction = "umap",
-                    pt.size = 1,
-                    label = T) +
-  theme(aspect.ratio = 1)
-
-pdf("Figures/early_late_umap_all.pdf",
-    width = 5,
-    height = 5)
-umap_all
-dev.off()
-
-umap_timepoint_all <- DimPlot(tumor_all,
-                              reduction = "umap",
-                              pt.size = 1,
-                              label = T,
-                              split.by = "timepoint") +
-  theme(aspect.ratio = 1)
-
-pdf("Figures/early_late_umap_timepoint_all.pdf",
-    width = 5,
-    height = 5)
-umap_timepoint_all
-dev.off()
+save(sobj_list,
+     file = "output/rdata/sobj_list.rds")
 ```
 
 ## Human Cell Only Processing
 
 ```{r human-processing, dependson="load"}
 # Human
-# Merge day 14 and day 35 Seurat objects together 
+# Merge day 14 and day 35 Seurat objects together
+human_sobjs <- grep("_h$", names(sobj_list))
 tumor <- merge(d14_positive, y = d35_positive,
                add.cell.ids = c("d14", "d35"),
                project = "Early vs Late OS Mets")
