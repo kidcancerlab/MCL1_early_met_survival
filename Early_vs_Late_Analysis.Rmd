@@ -39,7 +39,7 @@ set.seed(888)
 for directoryName in \
   output \
   output/figures \
-  output/sobjs
+  output/rdata
 do
   if [ ! -d ${directoryName} ]
   then
@@ -50,7 +50,6 @@ done
 
 # Load and Process Datasets
 Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
-
 ```{r load}
 sample_list <- read_tsv("misc/sample_cutoffs.txt", show_col_types = FALSE)
 
@@ -89,67 +88,65 @@ for (i in seq_len(nrow(sample_list))) {
            width = 10,
            height = 10,
            plot = plotted)
-
 }
 save(sobj_list,
      file = "output/rdata/sobj_list.rds")
 ```
 
 ## Human Cell Only Processing
-
 ```{r human-processing, dependson="load"}
 # Human
-# Merge day 14 and day 35 Seurat objects together
-human_sobjs <- grep("_h$", names(sobj_list))
-tumor <- merge(d14_positive, y = d35_positive,
-               add.cell.ids = c("d14", "d35"),
-               project = "Early vs Late OS Mets")
+# Merge day 14 and day 28 Seurat objects together
 
-# Process merged object
-tumor <- NormalizeData(tumor) %>%
-  ScaleData() %>%
-  FindVariableFeatures()
-tumor <- RunPCA(tumor,
-                features = VariableFeatures(tumor)) %>%
-  FindNeighbors(dims = 1:20) %>%
-  FindClusters(resolution = 0.15) %>%
-  RunUMAP(dims = 1:20)
-
-# Plot UMAP
-DimPlot(tumor,
-        reduction = "umap",
-        pt.size = 1,
-        label = T) +
-  theme(aspect.ratio = 1)
+####################################################################
+#### Emily, I don't know if you only want these two
+####################################################################
+# Only needed if you want to grab all the human samples
+# human_sobjs <- grep("_h$", names(sobj_list))
+tumor <-
+    merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[["d28_pos_h"]],
+          add.cell.ids = c("d14", "d28"),
+          project = "Early vs Late OS Mets") %>%
+    NormalizeData() %>%
+    ScaleData() %>%
+    FindVariableFeatures() %>%
+    RunPCA() %>%
+    FindNeighbors(dims = 1:20) %>%
+    FindClusters(resolution = 0.15) %>%
+    RunUMAP(dims = 1:20)
 
 # Save human mCherry+ merged object
-save(tumor, file = "Data/early_late_tumor.RData")
+save(tumor, file = "output/rdata/d14_d28_tumor.RData")
 
-# Use timepoint naming (Day 14/Day 35) for UMAP plotting
-umap_timepoint <- DimPlot(tumor,
-                          reduction = "umap",
-                          pt.size = 1,
-                          group.by = "timepoint",
-                          label = T) +
-  theme(aspect.ratio = 1)
+# Use timepoint naming (Day 14/Day 28) for UMAP plotting
+umap_timepoint <-
+    DimPlot(tumor,
+            pt.size = 1,
+            group.by = "timepoint",
+            label = T) +
+    theme_roberts() +
+    theme(aspect.ratio = 1)
 umap_timepoint
 
-pdf("Figures/early_late_umap.pdf",
+pdf("output/figures/d14_d28_umap.pdf",
     width = 5,
     height = 5)
 umap_timepoint
 dev.off()
 
 # Use basic naming (early/late) for UMAP plotting
-umap_group <- DimPlot(tumor,
-                      reduction = "umap",
-                      pt.size = 1,
-                      group.by = "group",
-                      label = T) +
-  theme(aspect.ratio = 1)
+umap_group <-
+    DimPlot(tumor,
+            reduction = "umap",
+            pt.size = 1,
+            group.by = "group",
+            label = T) +
+    theme_roberts() +
+    theme(aspect.ratio = 1)
 umap_group
 
-pdf("Figures/early_late_umap.pdf",
+pdf("output/figures/d14_d28_umap.pdf",
     width = 5,
     height = 5)
 umap_group
@@ -161,7 +158,8 @@ dev.off()
 ```{r mouse-processing, dependson="load"}
 # Mouse
 # Merge day 14 and day 35 Seurat objects together 
-microenv <- merge(md14_positive, y = md35_positive,
+microenv <-
+    merge(md14_positive, y = md35_positive,
                   add.cell.ids = c("d14", "d35"),
                   project = "Early vs Late OS Mets")
 
