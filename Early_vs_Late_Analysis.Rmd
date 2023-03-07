@@ -97,12 +97,6 @@ save(sobj_list,
 ```{r human-processing, dependson="load"}
 # Human
 # Merge day 14 and day 28 Seurat objects together
-
-####################################################################
-#### Emily, I don't know if you only want these two
-####################################################################
-# Only needed if you want to grab all the human samples
-# human_sobjs <- grep("_h$", names(sobj_list))
 tumor <-
     merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[["d28_pos_h"]],
@@ -361,6 +355,10 @@ pdf("Figures/early_late_feature_plot_postccr.pdf",
 feature_plot 
 dev.off()
 ```
+
+
+
+
 
 
 ```{r, cache=FALSE}
