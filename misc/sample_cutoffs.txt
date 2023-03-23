@@ -10,3 +10,4 @@ S0086	d21_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 3wk	^mm10_	Day 21	Early
 S0084	d28_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 4wk	^mm10_	Day 28	Late	mCherry+
 S0092	d35_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 5wk	^mm10_	Day 39	Late	mCherry+
 S0093	d49_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 7wk	^mm10_	Day 49	Late	mCherry+
+S0037/outs	tibia_tumor_h	800	75000	20	none	OS17 tibia tumor	^hg19_	NA	Tibia	None
