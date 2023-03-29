@@ -154,7 +154,7 @@ dev.off()
 
 ```{r mouse-processing, dependson="load"}
 # Mouse
-# Merge day 14 and day 35 Seurat objects together 
+# Merge day 14 and day 35 Seurat objects together
 microenv <-
     merge(sobj_list[["d14_pos_m"]],
           y = sobj_list[["d35_pos_m"]],
@@ -186,7 +186,7 @@ DimPlot(microenv,
   coord_fixed()
 
 # Save mouse mCherry+ merged Seurat object
-save(microenv, file = "Data/early_late_microenv.RData")
+save(microenv, file = "output/rdata/early_late_microenv.RData")
 ```
 
 # Plotting Expression: Genes of Interest
@@ -318,7 +318,7 @@ dot_plot <-
   RotatedAxis()
 
 # Save as pdf
-pdf("Figures/early_late_dot_plot_postccr.pdf",
+pdf("output/figures/early_late_dot_plot_postccr.pdf",
     width = 7,
     height = 4)
 dot_plot +
@@ -333,10 +333,10 @@ vln_plot <-
   RotatedAxis()
 
 # Save as pdf
-pdf("Figures/early_late_vln_plot_postccr.pdf",
+pdf("output/figures/early_late_vln_plot_postccr.pdf",
     width = 6,
     height = 5)
-vln_plot 
+vln_plot
 dev.off()
 
 # Feature plot (UMAP) of expression of genes of interest by group (early/late)
@@ -348,7 +348,7 @@ feature_plot <-
   theme(aspect.ratio = 1)
 
 # Save as pdf
-pdf("Figures/early_late_feature_plot_postccr.pdf",
+pdf("output/figures/early_late_feature_plot_postccr.pdf",
     width = 6,
     height = 12)
 feature_plot
@@ -357,7 +357,7 @@ dev.off()
 
 ## Growth factor expression in normal vs lungs with mets
 Also plot each time point separately as a time-course
-```{r deGrowthFactorMets}
+```{r deGrowthFactorMets, dependson='load'}
 cm_target_genes <-
     read_tsv("misc/growth_factor_genes.txt",
              col_names = "human_gene",
@@ -402,21 +402,23 @@ combined_data$sample_name <-
     combined_data$sample_name %>%
     str_remove("/outs") %>%
     factor(., levels = c("S0006-WTLung",
-                      "S0082",
-                      "S0084",
-                      "S0093"))
+                         "S0082",
+                         "S0084",
+                         "S0093"))
+```
 
-#DimPlot(combined_data, group.by = "group_name")
-
+### Run DE on the tumor samples
+```{r deGrowthFactorMetsDE, dependson='deGrowthFactorMets'}
 Idents(combined_data) <- combined_data$group_name
 
 overall_de <-
     FindMarkers(combined_data,
                 ident.1 = "Control lung",
                 logfc.threshold = 0)
+```
 
-################################################################################
-# Assign cell types
+### Assign cell types
+```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
 imm_cells <- celldex::ImmGenData()
 mouse_rna <- celldex::MouseRNAseqData()
 
@@ -434,18 +436,16 @@ combined_data$cell_score <-
     cell_assign$scores %>%
     apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
 
-#DimPlot(combined_data, group.by = "cell_type", label = TRUE)
-
 cell_type_list <-
     table(combined_data$cell_type, combined_data$group) %>%
     as.data.frame() %>%
     group_by(Var1) %>%
     summarize(sum = sum(Freq), .groups = "drop") %>%
     filter(sum > 50)
+```
 
-################################################################################
-### Loop over Camille's list
-
+### Make supplemental figures with all cell types
+```{r deGrowthFactorMetsLoop, dependson='deGrowthFactorMetsCellType'}
 target_genes <- cm_target_genes
 
 target_genes <-
@@ -582,17 +582,14 @@ for (factor_name in c("group_name", "sample_description")) {
         width = 10,
         height = 8)
 }
-
-################################################################################
-# plot DE overall by group both grouped and by sample
 ```
 
 Add primary: S0131
 
 
 I'd like the following cell types to be in the main figure: dendritic cells, fibroblasts, macrophages, and monocytes And the following genes: AREG, EREG, FGF2, FGF10, FGF18, HBEGF, HGF, IFG1, NRG1, PDGFa, PDGFb, PDGFc, TGFa, TGFb1, and VEGFa
-
-```{r eval=FALSE}
+## Make main figures for growth factors
+```{r main_figs, dependson='deGrowthFactorMets'}
 combined_subset <- qs::qread("output/rdata/combined_subset.qs")
 
 cell_type_de <- read_tsv("output/de/cell_type_de.txt",
@@ -606,7 +603,7 @@ main_figure_cell_types <-
     c("Dendritic cells", "Fibroblasts", "Macrophages", "Monocytes")
 
 main_jitter_cell_types <-
-    c("Dendritic cells", "Fibroblasts", "Macrophages", "Monocytes")
+    c("Macrophages", "Monocytes")
 
 combined_subset_main <-
     combined_subset %>%
@@ -615,10 +612,8 @@ combined_subset_main <-
 combined_subset_main <-
     combined_subset_main[main_figure_genes, ]
 
-# trim jitter to just macs/mono
-
 for (factor_name in c("group_name", "sample_description")) {
-    ################################################################################
+    ############################################################################
     # Plot DE between lung and primary mets by cell type
     temp_data <-
         GetAssayData(combined_subset_main) %>%
@@ -712,7 +707,6 @@ for (factor_name in c("group_name", "sample_description")) {
         width = 8,
         height = 6)
 }
-
 ```
 
 
