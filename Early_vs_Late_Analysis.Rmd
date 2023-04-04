@@ -96,6 +96,33 @@ save(sobj_list,
      file = "output/rdata/sobj_list.rds")
 ```
 
+## UMAP with all samples
+```{r umap_alldependson='load', cache.vars=''}
+load("output/rdata/sobj_list.rds")
+all_samples <-
+    merge(sobj_list[[1]],
+          y = sobj_list[2:length(sobj_list)],
+          add.cell.ids = names(sobj_list)) %>%
+    process_seurat(resolution = 0.2)
+
+plot_name <-
+    DimPlot(all_samples,
+            group.by = "sample_description",
+            split.by = "sample_description",
+            shuffle = TRUE,
+            ncol = 2,
+            cols = plot_cols[1:length(sobj_list)],
+            pt.size = 0.01,
+            order = FALSE) +
+    theme_roberts() +
+    labs(title = NULL)
+
+ggsave("output/figures/umap_all_samples.pdf",
+       width = 4,
+       height = 6,
+       plot = plot_name)
+```
+
 ## Human Cell Only Processing
 ```{r human-processing, dependson="load"}
 # Human
@@ -205,7 +232,7 @@ dot_plot <-
             features = gene_list,
             group.by = "group",
             scale = FALSE,
-            cols = "Spectral") +
+            cols = c("blue", "red")) +
   RotatedAxis() +
   coord_fixed()
 
@@ -273,7 +300,8 @@ tumor_cc <-
 DimPlot(tumor_cc,
         group.by = "Phase",
         label = TRUE,
-        pt.size = 1)
+        pt.size = 1) +
+    theme_roberts()
 
 # Save as pdf
 pdf("output/figures/early_late_post-kill_cc.pdf",
@@ -282,7 +310,8 @@ pdf("output/figures/early_late_post-kill_cc.pdf",
 DimPlot(tumor_cc,
         group.by = "Phase",
         label = TRUE,
-        pt.size = 1)
+        pt.size = 1) +
+    theme_roberts()
 dev.off()
 
 # Plot tumor UMAP by timepoint post cell cycle regression
@@ -291,7 +320,8 @@ umap_cc <-
             pt.size = 1,
             label = TRUE,
             group.by = "timepoint") +
-  theme(aspect.ratio = 1)
+    theme_roberts() +
+    theme(aspect.ratio = 1)
 umap_cc
 
 # Save as pdf
@@ -314,15 +344,15 @@ dot_plot <-
             features = gene_list,
             group.by = "group",
             scale = F,
-            cols = "Spectral") +
-  RotatedAxis()
+            cols = c("blue", "red")) +
+  RotatedAxis() +
+  coord_fixed()
 
 # Save as pdf
 pdf("output/figures/early_late_dot_plot_postccr.pdf",
     width = 7,
     height = 4)
-dot_plot +
-  coord_fixed()
+dot_plot
 dev.off()
 
 # Violin plot of expression of genes of interest by group (early/late)
