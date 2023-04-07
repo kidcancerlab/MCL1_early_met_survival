@@ -373,7 +373,7 @@ DimPlot(macro,
 
 ```{r}
 # Look at upregulated DEG to help determine cell id 
-Idents(macro) <- pos_m$RNA_snn_res.0.2
+Idents(macro) <- macro$RNA_snn_res.0.2
 markers <- FindAllMarkers(macro,
                           min.pct = 0.25,
                           logfc.threshold = 0.25,
