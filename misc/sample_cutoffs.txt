@@ -4,10 +4,10 @@ S0086	d21_pos_h	800	60000	20	none	OS17 mets - 3wk	^hg19_	Day 21	Early	mCherry+
 S0084	d28_pos_h	800	40000	20	none	OS17 mets - 4wk	^hg19_	Day 28	Late	mCherry+
 S0092	d35_pos_h	800	55000	20	none	OS17 mets - 5wk	^hg19_	Day 39	Late	mCherry+
 S0093	d49_pos_h	800	45000	20	none	OS17 mets - 7wk	^hg19_	Day 49	Late	mCherry+
-S0006-WTLung/outs	S0006_mouse	800	7500	20	MouseRNAseqData	SCID control lung	^mm10_	Day 0	Control	None
+S0006	S0006_mouse	800	7500	20	MouseRNAseqData	SCID control lung	^mm10_	Day 0	Control	None
 S0082	d14_pos_m	800	7000	20	MouseRNAseqData	OS17 mets - 2wk	^mm10_	Day 14	Early	mCherry+
 S0086	d21_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 3wk	^mm10_	Day 21	Early	mCherry+
 S0084	d28_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 4wk	^mm10_	Day 28	Late	mCherry+
 S0092	d35_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 5wk	^mm10_	Day 39	Late	mCherry+
 S0093	d49_pos_m	800	20000	20	MouseRNAseqData	OS17 mets - 7wk	^mm10_	Day 49	Late	mCherry+
-S0037/outs	tibia_tumor_h	800	75000	20	none	OS17 tibia tumor	^hg19_	Primary	Primary	None
+S0037	tibia_tumor_h	800	75000	20	none	OS17 tibia tumor	^hg19_	Primary	Primary	None
