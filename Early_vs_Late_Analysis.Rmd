@@ -31,6 +31,8 @@ library(tidyverse)
 library(rrrSingleCellUtils)
 theme_set(theme_bw())
 theme_update(plot.title = element_text(hjust = 0.5))
+library(ggplot2)
+library(patchwork)
 
 # Set random generator seed to facilitate reproducibility
 set.seed(888)
@@ -744,3 +746,64 @@ for (factor_name in c("group_name", "sample_description")) {
 sessionInfo()
 ```
 
+
+## UMAP plots
+```{r}
+#load the sobj
+load("output/rdata/sobj_list.rds")
+
+#subset the sobj of interest
+umap_subset <-
+    sobj_list[c("S0006_mouse",
+                "d14_pos_m",
+                "d28_pos_m",
+                "d49_pos_m",
+                "tibia_tumor_h",
+                "d14_pos_h",
+                "d28_pos_h",
+                "d49_pos_h"
+                )]
+
+
+umapplots <- list()
+for (object in umap_subset) {
+    umapplots[[object$obj_name[[1]]]] <- DimPlot(object) +
+            ggtitle(label=object$group) +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend()
+}
+
+# Combine the plots using wrap_plots()
+combined_plots <- wrap_plots(umapplots)
+
+# Add a layout specification
+combined_plots <- combined_plots + plot_layout(nrow = 2)
+
+# Display the final plot
+combined_plots
+
+#save the plot
+ggsave("output/figures/combined_plots.pdf",
+       width = 4,
+       height = 3,
+       plot = combined_plots)
+
+
+#Human only combined umap
+human_only <-
+    merge(sobj_list[["tibia_tumor_h"]],
+          y = sobj_list[c("d14_pos_h", "d28_pos_h", "d49_pos_h")],
+          add.cell.ids = c("Primary tumor", "Early metastatic tumor",
+                        "Midpoint metastatic tumor", "Late metastatic tumor"),
+          project = "human_only") %>%
+          process_seurat()
+
+umap_human_only <- DimPlot(human_only) +
+                    ggtitle(label="Primary and metastatic tumor") +
+                    theme_roberts() +
+                    theme(plot.title = element_text(hjust = 0.5)) +
+                    NoLegend()
+
+umap_human_only
+```
