@@ -3,3 +3,7 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# Figures and other intermediate files generated
+output/*
+*.png
