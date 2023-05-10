@@ -31,6 +31,8 @@ library(tidyverse)
 library(rrrSingleCellUtils)
 theme_set(theme_bw())
 theme_update(plot.title = element_text(hjust = 0.5))
+library(ggplot2)
+library(patchwork)
 
 # Set random generator seed to facilitate reproducibility
 set.seed(888)
@@ -76,9 +78,9 @@ for (i in seq_len(nrow(sample_list))) {
 
     sobj_list[[obj_name]] <-
         sobj_list[[obj_name]] %>%
-        subset(nCount_RNA   >= sample_list$ncount_rna_min[i] &
-               nCount_RNA   <= sample_list$ncount_rna_max[i] &
-               percent.mt   <= sample_list$mt_max[i]) %>%
+        subset(nCount_RNA >= sample_list$ncount_rna_min[i] &
+               nCount_RNA <= sample_list$ncount_rna_max[i] &
+               percent.mt <= sample_list$mt_max[i]) %>%
         process_seurat()
 
     plotted <-
@@ -111,7 +113,7 @@ plot_name <-
             split.by = "sample_description",
             shuffle = TRUE,
             ncol = 2,
-            cols = plot_cols[1:length(sobj_list)],
+            cols = plot_cols[seq_along(sobj_list)],
             pt.size = 0.01,
             order = FALSE) +
     theme_roberts() +
@@ -126,6 +128,15 @@ ggsave("output/figures/umap_all_samples.pdf",
 ## Human Cell Only Processing
 ```{r human-processing, dependson="load"}
 # Human
+# Normalize the number of cells per sample
+n_cells <- c()
+
+for (i in seq_along(sobj_list)) {
+    n_cells[i] <- length(colnames(sobj_list[[i]]))
+}
+
+names(n_cells) <- names(sobj_list)
+
 # Merge day 14 and day 28 Seurat objects together
 tumor <-
     merge(sobj_list[["d14_pos_h"]],
@@ -136,21 +147,19 @@ tumor <-
     ScaleData() %>%
     FindVariableFeatures() %>%
     RunPCA() %>%
-    FindNeighbors(dims = 1:20) %>%
-    FindClusters(resolution = 0.15) %>%
-    RunUMAP(dims = 1:20)
+    FindNeighbors(dims = 1:30) %>%
+    FindClusters(resolution = 0.15, k.param = 30) %>%
+    RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
 
 # Save human mCherry+ merged object
 save(tumor, file = "output/rdata/d14_d28_tumor.RData")
 
 # Use timepoint naming (Day 14/Day 28) for UMAP plotting
 umap_timepoint <-
-    DimPlot(tumor,
-            pt.size = 1,
-            group.by = "timepoint",
-            label = T) +
-    theme_roberts() +
-    theme(aspect.ratio = 1)
+    r_dim_plot(tumor,
+        title = "Tumor at metastatic timepoints",
+        group.by = "timepoint",
+        label = TRUE)
 umap_timepoint
 
 pdf("output/figures/d14_d28_umap.pdf",
@@ -161,13 +170,11 @@ dev.off()
 
 # Use basic naming (early/late) for UMAP plotting
 umap_group <-
-    DimPlot(tumor,
-            reduction = "umap",
-            pt.size = 1,
-            group.by = "group",
-            label = T) +
-    theme_roberts() +
-    theme(aspect.ratio = 1)
+    r_dim_plot(tumor,
+        title = "Tumor at metastatic timepoints",
+        group.by = "group",
+        label = TRUE,
+        repel = TRUE)
 umap_group
 
 pdf("output/figures/d14_d28_umap.pdf",
@@ -175,6 +182,18 @@ pdf("output/figures/d14_d28_umap.pdf",
     height = 5)
 umap_group
 dev.off()
+
+# Reorder the group metadata variable
+tumor$group <- factor(tumor$group, levels = c("Primary", "Early", "Late"))
+
+umap_group_split <-
+    r_dim_plot(tumor,
+        title = "Tumor at metastatic timepoints",
+        split.by = "group",
+        label = TRUE,
+        repel = TRUE)
+umap_group_split
+
 ```
 
 ## Mouse Cell Only Processing
@@ -194,23 +213,23 @@ microenv <-
     ScaleData() %>%
     FindVariableFeatures() %>%
     RunPCA() %>%
-    FindNeighbors(dims = 1:20) %>%
-    FindClusters(resolution = 0.15) %>%
-    RunUMAP(dims = 1:20)
+    FindNeighbors(dims = 1:30) %>%
+    FindClusters(resolution = 0.15, k.param = 30) %>%
+    RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
 
 # Plot UMAP
-DimPlot(microenv,
-        reduction = "umap",
-        pt.size = 1,
-        label = T) +
-  coord_fixed()
+env_umap <- r_dim_plot(microenv,
+        title = "Stroma at metastatic timepoints",
+        label = TRUE)
+env_umap
 
-DimPlot(microenv,
-        reduction = "umap",
-        pt.size = 1,
-        label = T,
-        split.by = "group") +
-  coord_fixed()
+env_umap_split <- r_dim_plot(microenv,
+        title = "Stroma at metastatic timepoints",
+        split.by = "group")
+env_umap_split
+
+timepoints_panel <- (umap_group | umap_group_split) / (env_umap | env_umap_split)
+timepoints_panel
 
 # Save mouse mCherry+ merged Seurat object
 save(microenv, file = "output/rdata/early_late_microenv.RData")
@@ -744,3 +763,64 @@ for (factor_name in c("group_name", "sample_description")) {
 sessionInfo()
 ```
 
+
+## UMAP plots
+```{r}
+#load the sobj
+load("output/rdata/sobj_list.rds")
+
+#subset the sobj of interest
+umap_subset <-
+    sobj_list[c("S0006_mouse",
+                "d14_pos_m",
+                "d28_pos_m",
+                "d49_pos_m",
+                "tibia_tumor_h",
+                "d14_pos_h",
+                "d28_pos_h",
+                "d49_pos_h"
+                )]
+
+
+umapplots <- list()
+for (object in umap_subset) {
+    umapplots[[object$obj_name[[1]]]] <- DimPlot(object) +
+            ggtitle(label=object$group) +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend()
+}
+
+# Combine the plots using wrap_plots()
+combined_plots <- wrap_plots(umapplots)
+
+# Add a layout specification
+combined_plots <- combined_plots + plot_layout(nrow = 2)
+
+# Display the final plot
+combined_plots
+
+#save the plot
+ggsave("output/figures/combined_plots.pdf",
+       width = 4,
+       height = 3,
+       plot = combined_plots)
+
+
+#Human only combined umap
+human_only <-
+    merge(sobj_list[["tibia_tumor_h"]],
+          y = sobj_list[c("d14_pos_h", "d28_pos_h", "d49_pos_h")],
+          add.cell.ids = c("Primary tumor", "Early metastatic tumor",
+                        "Midpoint metastatic tumor", "Late metastatic tumor"),
+          project = "human_only") %>%
+          process_seurat()
+
+umap_human_only <- DimPlot(human_only) +
+                    ggtitle(label="Primary and metastatic tumor") +
+                    theme_roberts() +
+                    theme(plot.title = element_text(hjust = 0.5)) +
+                    NoLegend()
+
+umap_human_only
+```
