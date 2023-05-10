@@ -31,7 +31,6 @@ library(tidyverse)
 library(rrrSingleCellUtils)
 theme_set(theme_bw())
 theme_update(plot.title = element_text(hjust = 0.5))
-library(ggplot2)
 library(patchwork)
 
 # Set random generator seed to facilitate reproducibility
@@ -76,16 +75,20 @@ for (i in seq_len(nrow(sample_list))) {
         sobj_list[[obj_name]][[colname]] <- sample_list[[colname]][i]
     }
 
-    sobj_list[[obj_name]] <-
-        sobj_list[[obj_name]] %>%
-        subset(nCount_RNA >= sample_list$ncount_rna_min[i] &
-               nCount_RNA <= sample_list$ncount_rna_max[i] &
-               percent.mt <= sample_list$mt_max[i]) %>%
-        process_seurat()
+    cutoff_tibble <-
+        tribble(~feature, ~min_val, ~max_val,
+                "nCount_RNA",
+                sample_list$ncount_rna_min[i],
+                sample_list$ncount_rna_max[i],
+
+                "percent.mt",
+                0,
+                sample_list$mt_max[i])
 
     plotted <-
         feature_hist(sobj_list[[obj_name]],
-                     features = c("nCount_RNA", "percent.mt"))
+                     features = c("nCount_RNA", "percent.mt"),
+                     cutoff_table = cutoff_tibble)
 
     ggsave(paste0("output/figures/feature_hist_",
                   obj_name,
@@ -93,6 +96,13 @@ for (i in seq_len(nrow(sample_list))) {
            width = 10,
            height = 10,
            plot = plotted)
+
+    sobj_list[[obj_name]] <-
+        sobj_list[[obj_name]] %>%
+        subset(nCount_RNA >= sample_list$ncount_rna_min[i] &
+               nCount_RNA <= sample_list$ncount_rna_max[i] &
+               percent.mt <= sample_list$mt_max[i]) %>%
+        process_seurat()
 }
 save(sobj_list,
      file = "output/rdata/sobj_list.rds")
