@@ -148,7 +148,7 @@ umap_timepoint <-
     DimPlot(tumor,
             pt.size = 1,
             group.by = "timepoint",
-            label = T) +
+            label = TRUE) +
     theme_roberts() +
     theme(aspect.ratio = 1)
 umap_timepoint
@@ -165,7 +165,7 @@ umap_group <-
             reduction = "umap",
             pt.size = 1,
             group.by = "group",
-            label = T) +
+            label = TRUE) +
     theme_roberts() +
     theme(aspect.ratio = 1)
 umap_group
@@ -177,8 +177,21 @@ umap_group
 dev.off()
 ```
 
-## Mouse Cell Only Processing
+## Run DE on human cells for GSEA and IPA
+```{r human-de, dependson="load"}
+load("output/rdata/sobj_list.rds")
 
+tumor_three_tp <-
+    merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h", "d49_pos_h", "tibia_tumor_h")],
+          add.cell.ids = c("d14", "d28", "d49", "tibia")) %>%
+    process_seurat(resolution = 0.15, run_umap_dims = 1:20)
+
+# Save human mCherry+ merged object
+qs::qsave(tumor, file = "output/rdata/d14_28_49_tumor.qs")
+```
+
+## Mouse Cell Only Processing
 ```{r mouse-processing, dependson="load"}
 # Mouse
 # Merge day 14 and day 35 Seurat objects together
@@ -202,19 +215,77 @@ microenv <-
 DimPlot(microenv,
         reduction = "umap",
         pt.size = 1,
-        label = T) +
+        label = TRUE) +
   coord_fixed()
 
 DimPlot(microenv,
         reduction = "umap",
         pt.size = 1,
-        label = T,
+        label = TRUE,
         split.by = "group") +
   coord_fixed()
 
 # Save mouse mCherry+ merged Seurat object
 save(microenv, file = "output/rdata/early_late_microenv.RData")
 ```
+
+## Cell type annotation using Tabula Sapiens dataset
+
+### Get reference datasets
+GSE151974
+```{r mouse_ref_GSE151974}
+ref_path <- "/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse"
+
+# Sys.setenv("VROOM_CONNECTION_SIZE" = 9999999)
+data_matrix <-
+    read.csv(paste0(ref_path,
+             "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
+             header = TRUE) %>%
+    column_to_rownames("X")
+
+metadata <-
+    read.csv(paste0(ref_path,
+             "/GSE151974/GSE151974_cell_metadata_postfilter.csv.gz"),
+             header = TRUE) %>%
+    column_to_rownames("X")
+
+mouse_lung_ref <-
+    CreateSeuratObject(counts = data_matrix,
+                       project = "mouse_lung_ref",
+                       meta.data = metadata) %>%
+    subset(Oxygen == "Normoxia") %>%
+    process_seurat(resolution = 0.15, run_umap_dims = 1:20)
+
+DimPlot(mouse_lung_ref,
+        pt.size = 1,
+        label = TRUE,
+        group.by = "CellType") +
+    NoLegend()
+
+immune_ref <- celldex::ImmGenData() %>%
+    as("SingleCellExperiment") %>%
+    as.Seurat(counts = NULL, data = "logcounts") %>%
+    RenameAssays("originalexp" = "RNA") %>%
+    process_seurat(run_umap_dims = 1:30)
+
+qs::qsave(mouse_lung_ref, file = "output/rdata/mouse_lung_ref.qs")
+```
+
+### Add reference labels to mouse cells
+
+```{r mouse_ref_labels}
+
+
+anchor_data <- FindTransferAnchors(object = tumor,
+                                   anchor.features = VariableFeatures(tumor),
+                                   reference = human_lung_ts,
+                                   reference.anchors = 2000,
+                                   dims = 1:20)
+
+```
+
+
+
 
 # Plotting Expression: Genes of Interest
 
@@ -262,7 +333,7 @@ feature_plot <-
     FeaturePlot(tumor,
                 features = gene_list,
                 split.by = "group",
-                order = T)
+                order = TRUE)
 
 # Save as pdf
 pdf("output/figures/early_late_feature_plot.pdf",
@@ -343,7 +414,7 @@ dot_plot <-
     DotPlot(tumor_cc,
             features = gene_list,
             group.by = "group",
-            scale = F,
+            scale = FALSE,
             cols = c("blue", "red")) +
   RotatedAxis() +
   coord_fixed()
@@ -374,7 +445,7 @@ feature_plot <-
     FeaturePlot(tumor_cc,
                 features = gene_list,
                 split.by = "group",
-                order = T) +
+                order = TRUE) +
   theme(aspect.ratio = 1)
 
 # Save as pdf
