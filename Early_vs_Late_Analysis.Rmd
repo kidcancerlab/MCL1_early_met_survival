@@ -78,9 +78,9 @@ for (i in seq_len(nrow(sample_list))) {
 
     sobj_list[[obj_name]] <-
         sobj_list[[obj_name]] %>%
-        subset(nCount_RNA   >= sample_list$ncount_rna_min[i] &
-               nCount_RNA   <= sample_list$ncount_rna_max[i] &
-               percent.mt   <= sample_list$mt_max[i]) %>%
+        subset(nCount_RNA >= sample_list$ncount_rna_min[i] &
+               nCount_RNA <= sample_list$ncount_rna_max[i] &
+               percent.mt <= sample_list$mt_max[i]) %>%
         process_seurat()
 
     plotted <-
@@ -113,7 +113,7 @@ plot_name <-
             split.by = "sample_description",
             shuffle = TRUE,
             ncol = 2,
-            cols = plot_cols[1:length(sobj_list)],
+            cols = plot_cols[seq_along(sobj_list)],
             pt.size = 0.01,
             order = FALSE) +
     theme_roberts() +
@@ -138,9 +138,9 @@ tumor <-
     ScaleData() %>%
     FindVariableFeatures() %>%
     RunPCA() %>%
-    FindNeighbors(dims = 1:20) %>%
-    FindClusters(resolution = 0.15) %>%
-    RunUMAP(dims = 1:20)
+    FindNeighbors(dims = 1:30) %>%
+    FindClusters(k.param = 30, resolution = 0.15) %>%
+    RunUMAP(dims = 1:30)
 
 # Save human mCherry+ merged object
 save(tumor, file = "output/rdata/d14_d28_tumor.RData")
