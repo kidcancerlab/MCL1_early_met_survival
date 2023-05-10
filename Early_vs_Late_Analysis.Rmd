@@ -218,17 +218,18 @@ microenv <-
     RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
 
 # Plot UMAP
-r_dim_plot(microenv,
+env_umap <- r_dim_plot(microenv,
         title = "Stroma at metastatic timepoints",
-        label = TRUE) +
-  coord_fixed()
+        label = TRUE)
+env_umap
 
-r_dim_plot(microenv,
-        reduction = "umap",
-        pt.size = 1,
-        label = T,
-        split.by = "group") +
-  coord_fixed()
+env_umap_split <- r_dim_plot(microenv,
+        title = "Stroma at metastatic timepoints",
+        split.by = "group")
+env_umap_split
+
+timepoints_panel <- (umap_group | umap_group_split) / (env_umap | env_umap_split)
+timepoints_panel
 
 # Save mouse mCherry+ merged Seurat object
 save(microenv, file = "output/rdata/early_late_microenv.RData")
