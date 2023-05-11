@@ -32,6 +32,8 @@ library(rrrSingleCellUtils)
 theme_set(theme_bw())
 theme_update(plot.title = element_text(hjust = 0.5))
 library(patchwork)
+library(fgsea)
+library(msigdbr)
 
 # Set random generator seed to facilitate reproducibility
 set.seed(888)
@@ -817,7 +819,7 @@ ggsave("output/figures/combined_plots.pdf",
        plot = combined_plots)
 
 
-#Human only combined umap
+#Human only combined umap: this puts them in the same space/comparable
 human_only <-
     merge(sobj_list[["tibia_tumor_h"]],
           y = sobj_list[c("d14_pos_h", "d28_pos_h", "d49_pos_h")],
@@ -834,3 +836,142 @@ umap_human_only <- DimPlot(human_only) +
 
 umap_human_only
 ```
+
+
+## GSEA_KEGG
+
+GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from: 
+                  S0037 (primary) redo human cells to S0082(early) human cells 
+                  S0082 (early) human cell to S0084(midpoint) human cells 
+                  S0084(midpoint) human cells to S0093 (late) human cells 
+                  S0082(early) human cells to S0093(late) human cells 
+```{r}
+load("output/rdata/sobj_list.rds")
+#we want all of the item in the same space, do combine and run process seurat
+human_only <-
+    merge(sobj_list[["tibia_tumor_h"]],
+          y = sobj_list[c("d14_pos_h",
+                          "d28_pos_h",
+                          "d49_pos_h")],
+          add.cell.ids = c("Primary_tumor",
+                           "Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor",
+                           "Late_metastatic_tumor"),
+          project      =   "human_only") %>%
+          process_seurat()
+
+#set the idents
+Idents(human_only) <- "group"
+
+#make a table to do the find markers in loop
+marker_table <- tribble(~item1, ~item2,
+                        "Primary_tumor", "Early_metastatic_tumor",
+                        "Early_metastatic_tumor", "Midpoint_metastatic_tumor",
+                        "Midpoint_metastatic_tumor", "Late_metastatic_tumor",
+                        "Late_metastatic_tumor", "Primary_tumor")
+
+#make a list that you can append to
+markers_list <- list()
+gsea_gene_lists <- list()
+#FindMarkers since we comaring across only two groups
+for (i in 1:nrow(marker_table)) {
+        df <- FindMarkers(human_only,
+                         ident.1 = marker_table$item1[i],
+                         ident.2 = marker_table$item2[i],
+                         min.pct = 0.1,
+                         logfc.threshold = 0)
+        df$gene <- rownames(df) 
+        gsea_list <- df %>% 
+              arrange(desc(avg_log2FC)) %>%
+              dplyr::select(gene, avg_log2FC)
+        gsea_list <- deframe(gsea_list)
+        filename1 <- paste0(marker_table$item1[i],
+                            "_",
+                            marker_table$item2[i],
+                            ".tsv")
+        filename2 <- paste0(marker_table$item1[i],
+                            "_vs_",
+                            marker_table$item2[i],
+                            ".tsv")
+        write_tsv(as.data.frame(df), file = filename1)
+        write_tsv(as.data.frame(gsea_list), file = filename2)
+        markers_list[[paste0(marker_table$item1[i],
+                            "_",
+                            marker_table$item2[i])]] <- df
+        gsea_gene_lists[[paste0(marker_table$item1[i],
+                            "_vs_",
+                            marker_table$item2[i])]] <- gsea_list
+}
+
+# Running the GSEA_KEGG
+# select dataset and then aggregate the genes into a list
+kegg_ref <- msigdbr(species = "Homo sapiens",
+                category = "C2",
+                subcategory = "CP:KEGG") %>%
+                split(x = .$gene_symbol, f = .$gs_name)
+
+
+# perform GSEA
+kegg_primary_early <- fgseaMultilevel(kegg_ref,
+                        gsea_gene_lists$Primary_tumor_vs_Early_metastatic_tumor,
+                        minSize = 15,      # min size of gene set to test
+                        maxSize = 500,     # max size of a gene set to test
+                        nPerm = 1000) %>%  # number of permutations to test
+                        arrange(padj)
+
+# get only the top 10 pathways
+kegg_primary_early[1:10, ]
+
+
+
+
+
+
+
+
+
+
+#I am here trying to figure out how to make it work in loop
+kegg_results_list <- list()
+for (item in names(gsea_gene_lists)) {
+    print(item)
+     result <- fgseaMultilevel(kegg_ref,
+                            [[item]],
+                            minSize = 15,      # min size of gene set to test
+                            maxSize = 500,     # max size of a gene set to test
+                            nPerm = 1000) %>%  # number of permutations to test
+                            arrange(padj)
+
+
+    # #filename <- paste0(markers_list[item],".tsv")
+    #write_tsv(as.data.frame(result), file = filename)
+    #kegg_results_list[[item]] <- result
+
+    #fwrite(fgsea_res, "DC_stim_vs_ctrl_GSEA.csv")
+}
+```
+
+
+
+
+
+
+
+
+
+# Mclapply
+```{r}
+Find_markers <- function(x) {
+    x <- for (i in 1:nrow(marker_table)) {
+        y <- FindMarkers(human_only,
+                            ident.1 = marker_table$item1[i],
+                            ident.2 = marker_table$item2[i],
+                            min.pct = 0.1,
+                            logfc.threshold = 0)
+    }
+
+}
+
+```
+
+
