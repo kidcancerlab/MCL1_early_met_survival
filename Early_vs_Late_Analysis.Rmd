@@ -32,7 +32,6 @@ library(rrrSingleCellUtils)
 theme_set(theme_bw())
 theme_update(plot.title = element_text(hjust = 0.5))
 library(patchwork)
-library(fgsea)
 library(msigdbr)
 
 # Set random generator seed to facilitate reproducibility
@@ -108,7 +107,9 @@ for (i in seq_len(nrow(sample_list))) {
 }
 save(sobj_list,
      file = "output/rdata/sobj_list.rds")
+
 ```
+
 
 ## UMAP with all samples
 ```{r umap_alldependson='load', cache.vars=''}
@@ -135,7 +136,14 @@ ggsave("output/figures/umap_all_samples.pdf",
        width = 4,
        height = 6,
        plot = plot_name)
+
+
 ```
+
+
+
+
+
 
 ## Human Cell Only Processing
 ```{r human-processing, dependson="load"}
@@ -776,65 +784,261 @@ sessionInfo()
 ```
 
 
-## UMAP plots
+## Human Down Sampling for human
+```{r}
+#subset human only
+human_objects_list <- sobj_list[c("tibia_tumor_h",
+                                "d14_pos_h",
+                                "d28_pos_h",
+                                "d49_pos_h" )]
+
+human_objects_list
+
+#Downsample
+for (i in seq_len(length(human_objects_list))) {
+    temp_obj <- human_objects_list[[i]]
+    current_n_cells <- length(Cells(temp_obj))
+    sub_n_cells <- min(1500, current_n_cells)
+    temp_obj <- temp_obj[, sample(1:current_n_cells, sub_n_cells)]
+    human_objects_list[[i]] <- temp_obj
+}
+
+human_objects_list
+
+#Dimplot with down sample
+downsample_umap_human_only <-
+    merge(human_objects_list[["tibia_tumor_h"]],
+            y = human_objects_list[c("d14_pos_h",
+                            "d28_pos_h",
+                            "d49_pos_h")],
+            add.cell.ids = c("Primary_tumor",
+                            "Early_metastatic_tumor",
+                            "Midpoint_metastatic_tumor",
+                            "Late_metastatic_tumor"),
+            project = "downsample_umap_human_only") %>%
+            process_seurat()
+
+#Dimplot
+combined_downsampled_human <- DimPlot(downsample_umap_human_only) +
+                            ggtitle(label="Primary and metastatic tumor") +
+                            theme_roberts() +
+                            theme(plot.title = element_text(hjust = 0.5)) +
+                            coord_fixed()
+combined_downsampled_human
+
+#split by
+downsample_human_umaps <- 
+            DimPlot(downsample_umap_human_only, split.by = "group") +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend() + coord_fixed()
+
+#rearrange the panels for umap space
+downsample_human_umaps$data$group <-
+                                factor(x = downsample_human_umaps$data$group,
+                                levels = c("Primary_tumor",
+                                        "Early_metastatic_tumor",
+                                        "Midpoint_metastatic_tumor",
+                                        "Late_metastatic_tumor"))
+
+downsample_human_umaps
+
+#save the plot
+ggsave("output/figures/downsample_human_umaps.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_human_umaps)
+
+
+```
+
+
+## Mouse Down Sampling and Dimplot
+```{r}
+#subset human only
+mouse_objects_list <- sobj_list[c("S0006_mouse",
+                                "d14_pos_m",
+                                "d28_pos_m",
+                                "d49_pos_m")]
+
+mouse_objects_list
+
+#Downsample
+for (i in seq_len(length(mouse_objects_list))) {
+    temp_obj <- mouse_objects_list[[i]]
+    current_n_cells <- length(Cells(temp_obj))
+    sub_n_cells <- min(4500, current_n_cells)
+    temp_obj <- temp_obj[, sample(1:current_n_cells, sub_n_cells)]
+    mouse_objects_list[[i]] <- temp_obj
+}
+mouse_objects_list
+
+#downsampled objects are merged and seurat process for dimplot
+downsample_umap_mouse_only <-
+    merge(mouse_objects_list[["S0006_mouse"]],
+            y = mouse_objects_list[c("d14_pos_m",
+                            "d28_pos_m",
+                            "d49_pos_m")],
+            add.cell.ids = c("Mouse_control_lung",
+                            "Early_mouse_stroma",
+                            "Midpoint_mouse_stroma",
+                            "Late_mouse_stroma"),
+            project = "downsample_umap_mouse_only") %>%
+            process_seurat()
+
+#split by
+downsample_mouse_umaps <- 
+            DimPlot(downsample_umap_mouse_only, split.by = "group") +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend() + coord_fixed()
+
+#rearrange the panels for umap space
+downsample_mouse_umaps$data$group <- 
+                                factor(x = downsample_mouse_umaps$data$group,
+                                levels = c("Mouse_control_lung",
+                                        "Early_mouse_stroma",
+                                        "Midpoint_mouse_stroma",
+                                        "Late_mouse_stroma"))
+
+downsample_mouse_umaps
+
+#save the plot
+ggsave("output/figures/downsample_mouse_umaps.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_mouse_umaps)
+
+
+#combine plots with patchwork
+downsample_combined_plots <- (downsample_human_umaps / downsample_mouse_umaps)
+downsample_combined_plots
+ggsave("output/figures/downsample_combined_plots.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_combined_plots)
+
+#all combined
+downsample_combined_plots_all <-
+                        (combined_downsampled_human + 
+                        (downsample_human_umaps / downsample_mouse_umaps)) +
+                        plot_layout(widths = c(1, 4))
+
+downsample_combined_plots_all
+
+#save the plot
+ggsave("output/figures/downsample_combined_plots_all.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_combined_plots_all)
+
+```
+
+
+
+## Non-downsample UMAP plots
 ```{r}
 #load the sobj
 load("output/rdata/sobj_list.rds")
 
-#subset the sobj of interest
-umap_subset <-
-    sobj_list[c("S0006_mouse",
-                "d14_pos_m",
-                "d28_pos_m",
-                "d49_pos_m",
-                "tibia_tumor_h",
-                "d14_pos_h",
-                "d28_pos_h",
-                "d49_pos_h"
-                )]
-
-
-umapplots <- list()
-for (object in umap_subset) {
-    umapplots[[object$obj_name[[1]]]] <- DimPlot(object) +
-            ggtitle(label=object$group) +
-            theme_roberts() +
-            theme(plot.title = element_text(hjust = 0.5)) +
-            NoLegend()
-}
-
-# Combine the plots using wrap_plots()
-combined_plots <- wrap_plots(umapplots)
-
-# Add a layout specification
-combined_plots <- combined_plots + plot_layout(nrow = 2)
-
-# Display the final plot
-combined_plots
-
-#save the plot
-ggsave("output/figures/combined_plots.pdf",
-       width = 4,
-       height = 3,
-       plot = combined_plots)
-
+#subset the sobj of interest for human and mouse and merge
+#for human
+umap_human_only <-
+    merge(sobj_list[["tibia_tumor_h"]],
+            y = sobj_list[c("d14_pos_h",
+                            "d28_pos_h",
+                            "d49_pos_h")],
+            add.cell.ids = c("Primary_tumor",
+                            "Early_metastatic_tumor",
+                            "Midpoint_metastatic_tumor",
+                            "Late_metastatic_tumor"),
+            project = "umap_human_only") %>%
+            process_seurat()
 
 #Human only combined umap: this puts them in the same space/comparable
-human_only <-
-    merge(sobj_list[["tibia_tumor_h"]],
-          y = sobj_list[c("d14_pos_h", "d28_pos_h", "d49_pos_h")],
-          add.cell.ids = c("Primary tumor", "Early metastatic tumor",
-                        "Midpoint metastatic tumor", "Late metastatic tumor"),
-          project = "human_only") %>%
-          process_seurat()
-
-umap_human_only <- DimPlot(human_only) +
+combined_human_only <- DimPlot(umap_human_only) +
                     ggtitle(label="Primary and metastatic tumor") +
                     theme_roberts() +
                     theme(plot.title = element_text(hjust = 0.5)) +
-                    NoLegend()
+                    coord_fixed()
 
-umap_human_only
+combined_human_only
+
+#Dimplot
+human_umaps <- DimPlot(umap_human_only, split.by = "group") +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend() + coord_fixed()
+
+human_umaps
+
+#rearrange the panels for umap space
+human_umaps$data$group <- factor(x = human_umaps$data$group,
+                                levels = c("Primary_tumor",
+                                        "Early_metastatic_tumor",
+                                        "Midpoint_metastatic_tumor",
+                                        "Late_metastatic_tumor"))
+
+human_umaps
+
+#for mouse
+umap_mouse_only <-
+    merge(sobj_list[["S0006_mouse"]],
+            y = sobj_list[c("d14_pos_m",
+                            "d28_pos_m",
+                            "d49_pos_m")],
+            add.cell.ids = c("Mouse_control_lung",
+                            "Early_mouse_stroma",
+                            "Midpoint_mouse_stroma",
+                            "Late_mouse_stroma"),
+            project = "umap_mouse_only") %>%
+            process_seurat()
+
+
+#Dimplot
+mouse_umaps <- DimPlot(umap_mouse_only, split.by = "group") +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend() + coord_fixed()
+
+mouse_umaps
+
+#rearrange the panels for umap space
+mouse_umaps$data$group <- factor(x = mouse_umaps$data$group,
+                                levels = c("Mouse_control_lung",
+                                        "Early_mouse_stroma",
+                                        "Midpoint_mouse_stroma",
+                                        "Late_mouse_stroma"))
+
+mouse_umaps
+
+combined_human_only
+
+combined_plots <- (human_umaps / mouse_umaps)
+combined_plots
+
+combined_plots_all <- (combined_human_only + (human_umaps / mouse_umaps)) 
+                         + plot_layout(widths = c(1, 4))
+combined_plots_all
+
+
+#save the plot
+ggsave("output/figures/combined_human_only.pdf",
+       width = 6,
+       height = 6,
+       plot = combined_plots)
+
+ggsave("output/figures/combined_plots.pdf",
+       width = 8,
+       height = 6,
+       plot = combined_plots)
+
+ggsave("output/figures/combined_plots_all.pdf",
+       width = 12,
+       height = 6,
+       plot = combined_plots)
+
+
 ```
 
 
@@ -905,14 +1109,14 @@ for (i in 1:nrow(marker_table)) {
 
 # Running the GSEA_KEGG
 # select dataset and then aggregate the genes into a list
-kegg_ref <- msigdbr(species = "Homo sapiens",
+kegg_ref <- msigdbr::msigdbr(species = "Homo sapiens",
                 category = "C2",
                 subcategory = "CP:KEGG") %>%
                 split(x = .$gene_symbol, f = .$gs_name)
 
 
 # perform GSEA
-kegg_primary_early <- fgseaMultilevel(kegg_ref,
+kegg_primary_early <- fgsea::fgseaMultilevel(kegg_ref,
                         gsea_gene_lists$Primary_tumor_vs_Early_metastatic_tumor,
                         minSize = 15,      # min size of gene set to test
                         maxSize = 500,     # max size of a gene set to test
@@ -935,8 +1139,8 @@ kegg_primary_early[1:10, ]
 kegg_results_list <- list()
 for (item in names(gsea_gene_lists)) {
     print(item)
-     result <- fgseaMultilevel(kegg_ref,
-                            [[item]],
+     result <- fgsea::fgseaMultilevel(kegg_ref,
+                            gsea_gene_lists[[item]],
                             minSize = 15,      # min size of gene set to test
                             maxSize = 500,     # max size of a gene set to test
                             nPerm = 1000) %>%  # number of permutations to test
