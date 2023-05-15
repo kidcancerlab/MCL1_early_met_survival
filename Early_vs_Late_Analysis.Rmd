@@ -236,7 +236,6 @@ GSE151974
 ```{r mouse_ref_GSE151974}
 ref_path <- "/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse"
 
-# Sys.setenv("VROOM_CONNECTION_SIZE" = 9999999)
 data_matrix <-
     read.csv(paste0(ref_path,
              "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
@@ -255,6 +254,8 @@ mouse_lung_ref <-
                        meta.data = metadata) %>%
     subset(Oxygen == "Normoxia") %>%
     process_seurat(resolution = 0.15, run_umap_dims = 1:20)
+mouse_lung_ref$cell_type <- mouse_lung_ref$CellType
+mouse_lung_ref$dataset <- "GSE151974"
 
 DimPlot(mouse_lung_ref,
         pt.size = 1,
@@ -262,25 +263,58 @@ DimPlot(mouse_lung_ref,
         group.by = "CellType") +
     NoLegend()
 
-immune_ref <- celldex::ImmGenData() %>%
-    as("SingleCellExperiment") %>%
-    as.Seurat(counts = NULL, data = "logcounts") %>%
-    RenameAssays("originalexp" = "RNA") %>%
-    process_seurat(run_umap_dims = 1:30)
-
 qs::qsave(mouse_lung_ref, file = "output/rdata/mouse_lung_ref.qs")
 ```
 
 ### Add reference labels to mouse cells
 
 ```{r mouse_ref_labels}
+mouse_lung_ref <- qs::qread("output/rdata/mouse_lung_ref.qs")
 
+mouse_immune <- celldex::ImmGenData()
+mouse_immune[mouse_immune$label.main != "Stromal cells", ]
 
-anchor_data <- FindTransferAnchors(object = tumor,
-                                   anchor.features = VariableFeatures(tumor),
-                                   reference = human_lung_ts,
-                                   reference.anchors = 2000,
-                                   dims = 1:20)
+mouse_rna <- celldex::MouseRNAseqData()
+
+cell_assign <-
+    SingleR::SingleR(as.SingleCellExperiment(microenv),
+                     ref = list(GetAssayData(mouse_lung_ref),
+                                mouse_immune,
+                                mouse_rna),
+                     labels = list(mouse_lung_ref$cell_type,
+                                   mouse_immune$label.main,
+                                   mouse_rna$label.fine),
+                     aggr.ref = TRUE)
+
+SingleR::plotScoreHeatmap(cell_assign)
+
+microenv$cell_type <- cell_assign$labels# %>%
+    #str_replace("DC", "Dendritic cells")
+microenv$cell_score <- cell_assign$scores %>%
+    apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
+
+set.seed(1337)
+DimPlot(microenv,
+        group.by = "cell_type",
+        label = TRUE,
+        repel = TRUE,
+        #cells.highlight = WhichCells(microenv, expression = cell_type == "AT2 1"),
+        cols = sample(rainbow(n = length(unique(microenv$cell_type))))) +
+    NoLegend()
+
+harmonization <-
+    tribble(~from,      ~to,
+            "Alv Mf",               "Alveolar macrophages",
+            "Int Mf",               "Interstital macrophages",
+            "DC 1",                 "Dendritic cells",
+            "DC 2",                 "Dendritic cells",
+            "Art",                  "Arterial endothelial cells",
+            "Vein",                 "Venous endothelial cells",
+            "Lymph",                "Lymphatic endothelial cells",
+            "Mono",                 "Monocytes",
+            "NK cell",              "Natural killer cells",
+            "natural killer cells", "Natural killer cells",
+            "ILC2",                 "Innate lymphoid cells",)
 
 ```
 
