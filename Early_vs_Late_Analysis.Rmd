@@ -1155,13 +1155,114 @@ for (item in names(gsea_gene_lists)) {
 }
 ```
 
+## Ran IPA on the output of FindMarkers above
+Used a logFC cutoff of -1/1 and p_val_adj cutoff of 0.05
+```{r plotIPA}
+path_top_5 <-
+    read_tsv(list.files("output/pathway_analysis",
+                        pattern = "_paths.txt",
+                        full.names = TRUE),
+         id = "sample",
+         col_names = c("pathway",
+                       "neg_log_pval",
+                       "ratio",
+                       "z_score",
+                       "genes"),
+         show_col_types = FALSE,
+         skip = 1) %>%
+    filter(neg_log_pval > log10(0.05) &
+           !is.nan(z_score) &
+           z_score != 0) %>%
+    mutate(sample = str_remove(sample, ".+/") %>%
+               str_remove("_paths.txt")) %>%
+    group_by(sample, z_score > 0) %>%
+    arrange(desc(abs(z_score)), .by_group = TRUE) %>%
+    slice_head(n = 5) %>%
+    select(sample, pathway, z_score) %>%
+    mutate(order = seq_len(n()),
+           label_y = z_score / abs(z_score),
+           sample = str_remove(sample, "_tumor$") %>%
+                    str_replace_all("metastatic", "metastasis") %>%
+                    str_replace("tumor", "vs") %>%
+                    str_replace_all("_",
+                                    " ") %>%
+                    str_to_sentence() %>%
+                    factor(., levels = c("Primary vs early metastasis",
+                                         "Early metastasis vs midpoint metastasis",
+                                         "Midpoint metastasis vs late metastasis",
+                                         "Late metastasis vs primary"))) %>%
+    ungroup()
 
+two_way_plot <- function(data) {
+    lab4plot <-
+        tibble(y = c(-3, 3),
+               x = c(0.2, 0.2),
+               label = as.factor(c(paste("Upregulated in",
+                                         str_remove(data$sample[1],
+                                                    ".+vs") %>%
+                                            str_to_lower()),
+                                   paste("Upregulated in",
+                                         str_remove(data$sample[1],
+                                                    "vs.+") %>%
+                                            str_to_lower()))))
 
+    plot_name <-
+        ggplot() +
+        geom_bar(data = data,
+                 aes(x = -1 * order,
+                     y = z_score,
+                     fill = z_score > 0),
+                 stat = "identity",
+                 alpha = 0.8) +
+            coord_flip() +
+            geom_hline(yintercept = 0,
+                       color = "black",
+                       linewidth = 0.5) +
+            geom_text(data = data,
+                      aes(x = -1 * order,
+                          y = label_y * 3,
+                          label = pathway),
+                      size = 1.5) +
+            geom_text(data = lab4plot,
+                      aes(x = x,
+                          y = y,
+                          label = label),
+                      fontface = "bold",
+                      size = 1.5) +
+            scale_fill_manual(values = plot_cols) +
+            # theme_roberts(title_font_size = 5,
+            #               axis_font_size = 4) +
+            theme(strip.background = element_rect(color = "white",
+                                                  fill = "white"),
+                  legend.position = "none",
+                  panel.grid.major = element_blank(),
+                  panel.grid.minor = element_blank(),
+                  panel.border = element_blank(),
+                  axis.line.x = element_line(color = "black"),
+                  axis.line.y = element_blank(),
+                  axis.text.y = element_blank(),
+                  axis.ticks.y = element_blank(),
+                  plot.title = element_text(size = 5, face = "bold"),
+                  axis.text.x = element_text(size = 3)) +
+            labs(title = data$sample[1],
+                 y = "",
+                 x = "") +
+            ylim(-5, 5)
 
+    return(plot_name)
+}
 
+plot_list <- lapply(levels(path_top_5$sample),
+                    function(x) {
+    two_way_plot(filter(path_top_5, sample == x))
+})
 
-
-
+pdf("output/figures/Top_5_IPA_pathways.pdf",
+    width = 4,
+    height = 4)
+wrap_plots(plot_list, ncol = 1, heights = c(5, 5, 1.8, 3))
+dev.off()
+```
 
 # Mclapply
 ```{r}
