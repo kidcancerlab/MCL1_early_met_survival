@@ -1320,7 +1320,7 @@ pdf("output/figures/Top_5_IPA_pathways.pdf",
     height = 4)
 wrap_plots(plot_list, ncol = 1, heights = c(5, 5, 1.8, 3))
 dev.off()
-```
+
 
 # Save as PDF
 pdf("/home/gdrobertslab/lab/Analysis/Yogesh/MCL1_early_met_survival/Figures/figure_2c.pdf",
@@ -1377,9 +1377,66 @@ receiver_sobj <-
           process_seurat()
 
 
+```
 
+## Get the pre-defined model data
+```{r}
+
+ligand_target_matrix <-
+    readRDS( "nichenetrfiles/ligand_target_matrix.rds")
+
+lr_network <-
+    readRDS("nichenetrfiles/lr_network.rds")
+
+weighted_networks <-
+    readRDS("nichenetrfiles/weighted_networks.rds")
+
+weighted_networks_lr <-
+    weighted_networks$lr_sig %>%
+    inner_join(lr_network %>% distinct(from, to),
+               by = c("from", "to"))
 
 
 ```
+
+
+## Convert the gene names in model to mouse
+```{r}
+#makes capital lettered human genes (CXCL) to mouse format (Cxcl)
+lr_network <-
+    lr_network %>%
+    mutate(from = convert_human_to_mouse_symbols(from),
+           to = convert_human_to_mouse_symbols(to)) %>%
+    drop_na()
+
+#converts the colnames human genes name format to mouse format
+colnames(ligand_target_matrix) <-
+    ligand_target_matrix %>%
+    colnames() %>%
+    convert_human_to_mouse_symbols()
+
+#converts the rownames human genes name format to mouse format
+rownames(ligand_target_matrix) <-
+    ligand_target_matrix %>%
+    rownames() %>%
+    convert_human_to_mouse_symbols()
+
+#removes the NAs or the genes that were umable to convert
+ligand_target_matrix <-
+    ligand_target_matrix %>%
+    .[!is.na(rownames(ligand_target_matrix)),
+        !is.na(colnames(ligand_target_matrix))]
+
+#Convert the human format genes to mouse format in the file and drops NAs
+weighted_networks_lr <-
+    weighted_networks_lr %>%
+    mutate(from = convert_human_to_mouse_symbols(from),
+           to = convert_human_to_mouse_symbols(to)) %>%
+    drop_na()
+
+```
+
+
+
 
 
