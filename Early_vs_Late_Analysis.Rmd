@@ -533,7 +533,10 @@ combined_data <-
           y = list(sobj_list[["d14_pos_m"]],
                    sobj_list[["d28_pos_m"]],
                    sobj_list[["d49_pos_m"]])) %>%
-    process_seurat()
+    process_seurat(umap_metric = "cosine",
+                   run_umap_dims = 1:10,
+                   umap_n_neighbors = 30,
+                   neighbor_k_param = 20)
 
 combined_data$sample_description <-
     factor(combined_data$sample_description,
