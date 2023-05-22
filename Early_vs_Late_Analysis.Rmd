@@ -60,13 +60,13 @@ ref_path <- "/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse"
 
 data_matrix <-
     read.csv(paste0(ref_path,
-             "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
+                    "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
              header = TRUE) %>%
     column_to_rownames("X")
 
 metadata <-
     read.csv(paste0(ref_path,
-             "/GSE151974/GSE151974_cell_metadata_postfilter.csv.gz"),
+                    "/GSE151974/GSE151974_cell_metadata_postfilter.csv.gz"),
              header = TRUE) %>%
     column_to_rownames("X")
 
@@ -74,32 +74,13 @@ mouse_lung_ref <-
     CreateSeuratObject(counts = data_matrix,
                        project = "mouse_lung_ref",
                        meta.data = metadata) %>%
-    subset(Oxygen == "Normoxia") #%>%
-    #process_seurat(resolution = 0.15, run_umap_dims = 1:20)
+    subset(Oxygen == "Normoxia")
+
 mouse_lung_ref$cell_type <- mouse_lung_ref$CellType
 mouse_lung_ref$dataset <- "GSE151974"
 
-# DimPlot(mouse_lung_ref,
-#         pt.size = 1,
-#         label = TRUE,
-#         group.by = "CellType") +
-#     NoLegend()
-
-# cancer_imm <-
-#     readRDS("/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse/tumor_imm_atlas/TICAtlas_downsampled.rds")
-
-# cancer_imm_data <-
-#     GetAssayData(cancer_imm) %>%
-#     as.matrix() %>%
-#     as.data.frame() %>%
-#     mutate(gene = rownames(cancer_imm) %>%
-#             nichenetr::convert_human_to_mouse_symbols() %>%
-#             as.vector()) %>%
-#     filter(!is.na(gene)) %>%
-#     group_by(gene) %>%
-#     slice_head(n = 1) %>%
-#     column_to_rownames("gene") %>%
-#     as.matrix()
+qs::qsave(mouse_lung_ref,
+          file = paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))
 
 mouse_immune <- celldex::ImmGenData()
 # This label is not informative
@@ -136,13 +117,11 @@ Datasets are from tumors collected from mouse lungs at early (day 14 post inject
 ```{r load}
 sample_list <- read_tsv("misc/sample_cutoffs.txt", show_col_types = FALSE)
 
-sobj_list <- list()
-
-for (i in seq_len(nrow(sample_list))) {
+sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
     species_pattern <- sample_list$species_pattern[i]
     obj_name <- sample_list$obj_name[i]
 
-    sobj_list[[obj_name]] <-
+    sobj <-
         tenx_load_qc(paste0("/home/gdrobertslab/lab/Counts/",
                             sample_list$sample_name[i],
                             "/filtered_feature_bc_matrix"),
@@ -151,7 +130,7 @@ for (i in seq_len(nrow(sample_list))) {
 
     # Add metadata to dataset
     for (colname in colnames(sample_list)) {
-        sobj_list[[obj_name]][[colname]] <- sample_list[[colname]][i]
+        sobj[[colname]] <- sample_list[[colname]][i]
     }
 
     cutoff_tibble <-
@@ -165,7 +144,7 @@ for (i in seq_len(nrow(sample_list))) {
                 sample_list$mt_max[i])
 
     plotted <-
-        feature_hist(sobj_list[[obj_name]],
+        feature_hist(sobj,
                      features = c("nCount_RNA", "percent.mt"),
                      cutoff_table = cutoff_tibble)
 
@@ -176,8 +155,8 @@ for (i in seq_len(nrow(sample_list))) {
            height = 10,
            plot = plotted)
 
-    sobj_list[[obj_name]] <-
-        sobj_list[[obj_name]] %>%
+    sobj <-
+        sobj %>%
         subset(nCount_RNA >= sample_list$ncount_rna_min[i] &
                nCount_RNA <= sample_list$ncount_rna_max[i] &
                percent.mt <= sample_list$mt_max[i]) %>%
@@ -185,18 +164,22 @@ for (i in seq_len(nrow(sample_list))) {
 
     # Add cell type annotation if mouse
     if (species_pattern == "^mm10_") {
-        sobj_list[[obj_name]] <-
-            annot_cells(sobj_list[[obj_name]])
+        sobj <-
+            annot_cells(sobj)
     }
-}
-save(sobj_list,
-     file = "output/rdata/sobj_list.rds")
 
+    return(sobj)
+}, mc.cores = 5)
+
+names(sobj_list) <- sample_list$obj_name
+
+qs::qsave(sobj_list,
+          file = "output/rdata/sobj_list.qs")
 ```
 
 ## UMAP with all samples
 ```{r umap_alldependson='load', cache.vars=''}
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 all_samples <-
     merge(sobj_list[[1]],
           y = sobj_list[2:length(sobj_list)],
@@ -296,7 +279,7 @@ umap_group_split
 
 ## Run DE on human cells for GSEA and IPA
 ```{r human-de, dependson="load"}
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 
 tumor_three_tp <-
     merge(sobj_list[["d14_pos_h"]],
@@ -535,7 +518,7 @@ cm_target_genes <-
         by = "human_gene") %>%
     select(mouse_gene)
 
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 
 samples <- c("S0006_mouse", "d14_pos_m", "d28_pos_m", "d49_pos_m")
 
@@ -655,6 +638,102 @@ harmonization <-
       "natural killer cells" = "Natural killer cells",
       "^Vein$" =               "Venous endothelial cells")
 
+```
+
+## Code to try to assess stromal cell type assignment
+
+```{r stromal_cell_type_assignment}
+combined_data <- FindClusters(combined_data, resolution = 1)
+# Make cell assignments by cluster for each of the references separately
+cell_assign <- lapply(ref, function(x) {
+    a <- SingleR::SingleR(as.SingleCellExperiment(combined_data),
+        ref = x,
+        labels = x$label.fine,
+        clusters = combined_data$seurat_clusters)
+    a <- tibble(cluster = rownames(a), type = a$labels)
+    return(a)
+})
+# Combine the assignments into a table
+cell_assign <- left_join(cell_assign[[1]], cell_assign[[2]], by = "cluster") %>%
+    left_join(., cell_assign[[3]], by = "cluster") %>%
+    as_tibble()
+colnames(cell_assign) <- c("cluster", "immune", "whole_mouse", "lung")
+cell_assign
+# Add the tables that Yogesh assembled from PMID 35690521
+mac_subsets <- 
+    readxl::read_excel("misc/Finalmacrophage_and_monocyte_subsets.xlsx") %>%
+    filter(Species == "Mouse" & Assay == "RNA")
+mac_subsets$Major[mac_subsets$Major == 0] <- "Minor"
+mac_subsets$Major[mac_subsets$Major == 1] <- "Major"
+mac_subsets$Annotation <- paste0(mac_subsets$Annotation, "_", mac_subsets$Major)
+mac_subsets <- select(mac_subsets, Annotation, ID)
+mac_subset_list <- lapply(unique(mac_subsets$Annotation), function(s) {
+    return(mac_subsets$ID[mac_subsets$Annotation == s])
+})
+names(mac_subset_list) <- unique(mac_subsets$Annotation)
+# Examine the macrophage clusters more closely
+# Look at markers published in PMID 35732118, 35812401, 32302573, 35690521
+murine_mac_marks <- c(mac_subset_list, list(
+    inflam_mono = c("Ms4a4c", "Irf7", "Plac8", "Ly6c2"),
+    Cd36_Spp1_mac = c("Clec4d", "Hmox1", "Cd36", "Spp1", "Arg1"),
+    C1qa_mac = c("C1qa", "Fcgr3", "Ccr2", "Tgfbi"),
+    MhcHigh = c("Cd74", "H2-Aa", "Plbd1", "Ciita", "Il1r2", "Ifitm1", "Napsa",
+        "H2-Oa", "H2-DMb2", "Cd209a", "Plet1"),
+    Batf3_Dc = c("Flt3", "Batf3", "Zbtb46", "Ccr7", "Fscn1", "Ccl22", "Nfkb2"),
+    Cd14Mono = c("S100a8", "S100a9", "S100a12", "Vcan", "Cd36", "Cd14"),
+    Cd16Mono = c("Tcf7l2", "Mtss1", "Serpina1", "Rhoc", "Ms4a7", "Lilra1",
+        "Ifitm2", "Fcgr3a", "Siglec10", "Cx3cr1", "Lilrb1"),
+    Nlrp3Mac = c("Nlrp3", "Ereg", "Itgax", "Il1b", "Vegfa", "Ccl3"),
+    C1qcTAM = c("Apoe", "C1qa", "C1qb", "C1qc", "Cd81", "Trem2", "Acp5",
+        "Apoc1", "Prdm1", "Csf1r", "Slamf8"),
+    Spp1TAM = c("Cstb", "Spp1", "Fn1", "Abl2", "Pparg", "Sdc4", "Rgcc",
+        "Adm", "Marco"),
+    Mast = c("Ms4a2", "Cpa3", "Ccl3", "Ccl6", "Tpsb2", "Tpsd1", "Hdc",
+        "Slc18a2", "Gata2", "Kit", "Il1r1", "Hpgds", "Vwa5a"),
+    pDC = c("Gzmb", "Tcf4", "Jchain", "Mzb1", "Irf7", "Il3ra", "Slc15a4"),
+    Cd1c_cDC2 = c("Axl", "Fcer1a", "Cd1c", "Fcgr2b", "Cd1e", "Cd1a"),
+    Batf3_cDC1 = c("Cst7", "Dapp1", "Flt3", "C1orf54", "Ccr7", "Ido1"),
+    C1qaMac = c("C1qa", "Marco", "Apoe", "Cxcl10", "Cd163", "Cd68"),
+    Thbs1Mac = c("Thbs1", "Fcn1", "Vcan", "S100a12", "Nlrp3", "Il1b"),
+    MafbMac = c("Klf2", "Klf4", "Nr4a1", "Nr4a2", "Hsph1", "Lyve1", "Vegfa"),
+    Mki67Mac = c("Stmn1", "Top2a", "Mki67", "Mcm4", "Mcm5", "Mcm7"),
+    S100a8Mac = c("S100a8", "Ctsa", "Ctsd", "S100a2", "S100a6"),
+    Spp1Mac = c("Spp1", "Tmsb4x", "Tmsb10", "Ctsb"),
+    Neutro = c("S011a9", "S100a8", "Csfr", "Clec4d"),
+    cDC2_Cd209a = c("Cd209a"),
+    cDC2_Itgax = c("Itgax"),
+    cDC1_Clec9a = c("Cd207", "Clec9a", "Batf3"),
+    cDC1_Ccl22 = c("Ccl22", "Ccr7", "Fscn1", "Ccl5"),
+    Mono_Ly6c2 = c("Cxcl10", "Ly6c1", "Fcgr1", "Ly6c2"),
+    Mono_Nr4a1 = c("Fn1", "Nr4a1"),
+    Mono_Itga1 = c("Itga1", "Cd300a", "Clec4a1"),
+    Macro_Maf = c("Maf", "Cx3cr1", "Ccl2"),
+    Macro_Mgl2 = c("Mgl2", "Clec4b1"),
+    Macro_Vegfa = c("Vegfa", "Hilpda", "Hmox1", "Spp1"))
+)
+pdf("output/figures/mac_subset_marks.pdf",
+    width = 12,
+    height = 12)
+gridExtra::grid.table(cell_assign)
+DimPlot(combined_data,
+    pt.size = 1,
+    label = TRUE) +
+    coord_fixed()
+DimPlot(combined_data,
+    pt.size = 1,
+    split.by = "timepoint") +
+    coord_fixed()
+for (i in names(murine_mac_marks)) {
+    p <- r_feature_plot(combined_data,
+        title = i,
+        features = murine_mac_marks[[i]],
+        ncol = 3)
+    print(p)
+}
+dev.off()
+r_feature_plot(combined_data,
+        title = "Irf4",
+        features = "Irf4")
 ```
 
 ### Count cell types
@@ -957,11 +1036,6 @@ for (factor_name in c("group_name", "sample_description")) {
 ```
 
 
-```{r, cache=FALSE}
-sessionInfo()
-```
-
-
 ## Human Down Sampling for human
 ```{r}
 #subset human only
@@ -1117,7 +1191,7 @@ ggsave("output/figures/downsample_combined_plots_all.pdf",
 ## Non-downsample UMAP plots
 ```{r}
 #load the sobj
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 
 #subset the sobj of interest for human and mouse and merge
 #for human
@@ -1228,7 +1302,7 @@ GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from:
                   S0084(midpoint) human cells to S0093 (late) human cells 
                   S0082(early) human cells to S0093(late) human cells 
 ```{r}
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 #we want all of the item in the same space, do combine and run process seurat
 human_only <-
     merge(sobj_list[["tibia_tumor_h"]],
@@ -1457,4 +1531,6 @@ Find_markers <- function(x) {
 
 ```
 
-
+```{r, cache=FALSE}
+sessionInfo()
+```
