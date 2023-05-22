@@ -131,6 +131,8 @@ plot_name <-
     theme_roberts() +
     labs(title = NULL)
 
+plot_name
+
 ggsave("output/figures/umap_all_samples.pdf",
        width = 4,
        height = 6,
@@ -1043,6 +1045,7 @@ for (i in seq_len(length(mouse_objects_list))) {
 }
 mouse_objects_list
 
+set.seed(4444)
 #downsampled objects are merged and seurat process for dimplot
 downsample_umap_mouse_only <-
     merge(mouse_objects_list[["S0006_mouse"]],
@@ -1054,7 +1057,7 @@ downsample_umap_mouse_only <-
                             "Midpoint_mouse_stroma",
                             "Late_mouse_stroma"),
             project = "downsample_umap_mouse_only") %>%
-            process_seurat()
+            process_seurat(resolution=0.3)
 
 #combined
 downsample_mouse_combined <- DimPlot(downsample_umap_mouse_only) +
@@ -1171,7 +1174,6 @@ umap_mouse_only <-
                             "Late_mouse_stroma"),
             project = "umap_mouse_only") %>%
             process_seurat()
-
 
 #Dimplot
 mouse_umaps_combined <- DimPlot(umap_mouse_only) +
@@ -1519,7 +1521,7 @@ Genes/markers tested : differential expression from ident1=early and ident2=mid
 ```{r}  
 load("output/rdata/sobj_list.rds")
 
-#seurat objects sender of signal
+#seurat object: sender of signal
 sender_sobj <- 
     merge(sobj_list[["d14_pos_m"]],
           y = sobj_list[c("d28_pos_m")],
@@ -1528,7 +1530,7 @@ sender_sobj <-
             project = "sender_sobj") %>%
             process_seurat()
 
-#seurat objects receiver of signal
+#seurat object: receiver of signal
 receiver_sobj <- 
     merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[c("d28_pos_h")],
@@ -1537,6 +1539,17 @@ receiver_sobj <-
           project      =   "receiver_sobj") %>%
           process_seurat()
 
+# combine all of the objects
+sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h", 
+                          "d14_pos_m",
+                          "d28_pos_m")],
+          add.cell.ids = c("receiver",
+                           "receiver",
+                           "sender",
+                           "sender"),
+          project      =   "sender_receiver_sobj") %>%
+          process_seurat()
 
 ```
 
@@ -1595,7 +1608,78 @@ weighted_networks_lr <-
            to = convert_human_to_mouse_symbols(to)) %>%
     drop_na()
 
+
 ```
+
+## Nichenetr Analysis
+```{r}
+load("output/rdata/sobj_list.rds")
+
+#seurat objects sender of signal
+sender_sobj <- 
+    merge(sobj_list[["d14_pos_m"]],
+          y = sobj_list[c("d28_pos_m")],
+          add.cell.ids = c("Early_mouse_stroma",
+                            "Midpoint_mouse_stroma"),
+            project = "sender_sobj") %>%
+            process_seurat()
+
+#seurat objects receiver of signal
+receiver_sobj <- 
+    merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h")],
+          add.cell.ids = c("Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor"),
+          project      =   "receiver_sobj") %>%
+          process_seurat()
+
+#The combined object for both sender and receiver
+sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h", 
+                          "d14_pos_m",
+                          "d28_pos_m")],
+          add.cell.ids = c("Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor",
+                           "Early_mouse_stroma",
+                           "Midpoint_mouse_stroma"),
+          project      =   "sender_receiver_sobj") %>%
+          process_seurat()
+
+#set the same idents for all the objects
+Idents(sender_sobj) <- "group"
+Idents(receiver_sobj) <- "group"
+Idents(sender_receiver_sobj) <- "group"
+
+#Gives the list of target genes from the receiver dataset
+gset_stuff <- find_tar_genes(receiver_sobj, 
+                            id1 = "Early_metastatic_tumor",
+                            id2 = "Midpoint_metastatic_tumor",
+                            pval = 0.05,
+                            logfc = 0.25,
+                            spec = "human")
+
+#Download the ligand_receptor reference
+rrrSingleCellUtils:::gen_lig_receptor_ref()
+
+# Finds the ligands and genes target relationship in the sender and receiver: basically runs the nichenetr analysis
+fl_object <- find_ligands(sender_receiver_sobj,                    #sender seurat object
+                        gset = gset_stuff,                         #genes list form the receiver
+                        receiver = unique(Idents(receiver_sobj)),  
+                        senders = unique(Idents(sender_sobj)),
+                        gset_spec = "human",                   
+                        rec_spec = "human",
+                        send_spec = "mouse")
+
+#makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
+complex_heatmap <- plot_complex_heatmap(fl_object,
+                                        grid_color_low = "gray95",
+                                        grid_color_high = "midnightblue",
+                                        point_color_low = "white",
+                                        point_color_high = "darkred")
+
+complex_heatmap
+
+````
 
 
 
