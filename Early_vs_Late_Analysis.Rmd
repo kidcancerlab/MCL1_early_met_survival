@@ -566,6 +566,13 @@ combined_data$sample_name <-
                          "S0082",
                          "S0084",
                          "S0093"))
+
+combined_data$group <-
+    factor(combined_data$group,
+           levels = c("Mouse_control_lung",
+                      "Early_mouse_stroma",
+                      "Midpoint_mouse_stroma",
+                      "Late_mouse_stroma"))
 ```
 
 ### Run DE on the mouse samples
@@ -629,27 +636,24 @@ DimPlot(test,
         cells.highlight = WhichCells(test,
                                      expression = seurat_clusters == 16))
 
-combined_data$group <-
-    factor(combined_data$group,
-           levels = c("Mouse_control_lung",
-                      "Early_mouse_stroma",
-                      "Midpoint_mouse_stroma",
-                      "Late_mouse_stroma"))
-
-
+# Not using this yet, but we might want to use it to fix cell type names
 harmonization <-
-    tribble(~from,      ~to,
-            "Alv Mf",               "Alveolar macrophages",
-            "Int Mf",               "Interstital macrophages",
-            "DC 1",                 "Dendritic cells",
-            "DC 2",                 "Dendritic cells",
-            "Art",                  "Arterial endothelial cells",
-            "Vein",                 "Venous endothelial cells",
-            "Lymph",                "Lymphatic endothelial cells",
-            "Mono",                 "Monocytes",
-            "NK cell",              "Natural killer cells",
-            "natural killer cells", "Natural killer cells",
-            "ILC2",                 "Innate lymphoid cells",)
+    c("Alv Mf" =               "Alveolar macrophages",
+      "^Art$" =                "Arterial endothelial cells",
+      "AT2 1" =                "AT2 cells",
+      "AT2 2" =                "AT2 cells",
+      "B cell 1" =             "B cells",
+      "^Cap$" =                "Capillary endothelial cells",
+      "^Cap-a$" =              "Capillary endothelial cells - aerocytes",
+      "Ciliated" =             "Ciliated cells",
+      "Club" =                 "Club cells",
+      "ILC2" =                 "Innate lymphoid cells",
+      "Int Mf" =               "Interstital macrophages",
+      "^Lymph$" =              "Lymphatic endothelial cells",
+      "^Mono$" =               "Monocytes",
+      "NK cell" =              "Natural killer cells",
+      "natural killer cells" = "Natural killer cells",
+      "^Vein$" =               "Venous endothelial cells")
 
 ```
 
@@ -671,13 +675,20 @@ harmonization <-
 # combined_data$cell_score <-
 #     cell_assign$scores %>%
 #     apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
+combined_data$cell_type <-
+    str_remove(combined_data$cell_type, " [12]$")
+
+combined_data$cell_type <-
+    str_replace_all(combined_data$cell_type,
+                harmonization)
+
 
 cell_type_list <-
     table(combined_data$cell_type, combined_data$group) %>%
     as.data.frame() %>%
     group_by(Var1) %>%
     summarize(sum = sum(Freq), .groups = "drop") %>%
-    filter(sum > 50)
+    filter(sum > 10)
 ```
 
 ### Make supplemental figures with all cell types
