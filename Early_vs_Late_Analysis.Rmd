@@ -796,6 +796,12 @@ Idents(combined_subset) <- combined_subset$group_name
 qs::qsave(combined_subset,
           file = "output/rdata/combined_subset.qs")
 
+table(combined_subset$cell_type, combined_subset$group_name) %>%
+    as.data.frame() %>%
+    pivot_wider(names_from = Var2,
+                values_from = Freq) %>%
+    gt::gt()
+
 cell_type_de <- tibble(gene = character())
 
 for (cell_type in unique(combined_subset$cell_type)) {
@@ -834,7 +840,28 @@ for (factor_name in c("group_name", "sample_description")) {
                              -sample_description,
                              -cell),
                      names_to = "gene",
-                     values_to = "expression")
+                     values_to = "expression") %>% 
+        group_by(cell_type, group_name, gene) %>%
+        summarize(expression = mean(expression),
+                  pct_expr = sum(expression > 0) / n(),
+                  .groups = "drop") %>%
+        mutate(gene_group = paste(gene, group_name, sep = "\n"))
+
+    ggplot(temp_data,
+           aes(x = group_name,
+               y = cell_type,
+               group = group_name,
+               color = expression,
+               size = pct_expr)) +
+        geom_point(position = position_dodge(0.5)) +
+        facet_wrap(~ gene, nrow = 1) +
+        theme_roberts() +
+        scale_color_gradient(low = "white",
+                             high = "darkred") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        scale_y_discrete(limits = rev)
+
+
 
     plot_name <-
         ggplot(temp_data,
