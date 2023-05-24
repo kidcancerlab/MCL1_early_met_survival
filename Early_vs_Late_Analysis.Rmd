@@ -651,6 +651,9 @@ cell_assignments <-
 combined_data <-
     RenameIdents(combined_data, cell_assignments)
 combined_data$cell_type_final <- Idents(combined_data)
+
+qs::qsave(combined_data,
+          file = "output/rdata/combined_data.qs")
 ```
 
 ### Run DE on the mouse samples
@@ -1714,7 +1717,8 @@ weighted_networks_lr <-
 
 ## Nichenetr Analysis
 ```{r}
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+combined_data <- qs::qread("output/rdata/combined_data.qs")
 
 #seurat objects sender of signal
 sender_sobj <- 
