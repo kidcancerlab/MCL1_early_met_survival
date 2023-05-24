@@ -504,25 +504,7 @@ dev.off()
 ## Growth factor expression in normal vs lungs with mets
 Also plot each time point separately as a time-course
 ```{r deGrowthFactorMets, dependson='load'}
-cm_target_genes <-
-    read_tsv("misc/growth_factor_genes.txt",
-             col_names = "human_gene",
-             show_col_types = FALSE) %>%
-    left_join(read_tsv("misc/HMD_HumanPhenotype.rpt",
-                       col_names = c("human_gene",
-                                     "h_entrez",
-                                     "mouse_gene",
-                                     "mgi",
-                                     "pheno",
-                                     "junk"),
-                       show_col_types = FALSE) %>%
-        select(human_gene, mouse_gene),
-        by = "human_gene") %>%
-    select(mouse_gene)
-
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
-
-samples <- c("S0006_mouse", "d14_pos_m", "d28_pos_m", "d49_pos_m")
 
 sobj_list$S0006_mouse$group_name <- "Control lung"
 
@@ -538,7 +520,8 @@ combined_data <-
     process_seurat(umap_metric = "cosine",
                    run_umap_dims = 1:10,
                    umap_n_neighbors = 30,
-                   neighbor_k_param = 20)
+                   neighbor_k_param = 20,
+                   resolution = 1)
 
 combined_data$sample_description <-
     factor(combined_data$sample_description,
@@ -561,6 +544,113 @@ combined_data$group <-
                       "Early_mouse_stroma",
                       "Midpoint_mouse_stroma",
                       "Late_mouse_stroma"))
+```
+
+## Code to try to assess stromal cell type assignment
+To assess the stromal cell type assignment, we will use the SingleR package to assign cell types from a couple of different cell references. We then use marker genes taken from several different papers to assess the cell type assignments. We then use a combination of these to assign cell types for each cluster.
+```{r stromal_cell_type_assignment}
+# Make cell assignments by cluster for each of the references separately
+cell_assign <- lapply(ref, function(x) {
+    a <- SingleR::SingleR(as.SingleCellExperiment(combined_data),
+        ref = x,
+        labels = x$label.fine,
+        clusters = combined_data$seurat_clusters)
+    a <- tibble(cluster = rownames(a), type = a$labels)
+    return(a)
+})
+# Combine the assignments into a table
+cell_assign <- left_join(cell_assign[[1]], cell_assign[[2]], by = "cluster") %>%
+    left_join(., cell_assign[[3]], by = "cluster") %>%
+    as_tibble()
+colnames(cell_assign) <- c("cluster", "immune", "whole_mouse", "lung")
+cell_assign
+# Add the tables that Yogesh assembled from PMID 35690521
+mac_subsets <-
+    readxl::read_excel("misc/Finalmacrophage_and_monocyte_subsets.xlsx") %>%
+    filter(Species == "Mouse" & Assay == "RNA")
+mac_subsets$Major[mac_subsets$Major == 0] <- "Minor"
+mac_subsets$Major[mac_subsets$Major == 1] <- "Major"
+mac_subsets$Annotation <- paste0(mac_subsets$Annotation, "_", mac_subsets$Major)
+mac_subsets <- select(mac_subsets, Annotation, ID)
+mac_subset_list <- lapply(unique(mac_subsets$Annotation), function(s) {
+    return(mac_subsets$ID[mac_subsets$Annotation == s])
+})
+names(mac_subset_list) <- unique(mac_subsets$Annotation)
+# Examine the macrophage clusters more closely
+# Look at markers published in PMID 35732118, 35812401, 32302573, 35690521
+murine_mac_marks <- c(mac_subset_list, list(
+    inflam_mono = c("Ms4a4c", "Irf7", "Plac8", "Ly6c2"),
+    Cd36_Spp1_mac = c("Clec4d", "Hmox1", "Cd36", "Spp1", "Arg1"),
+    C1qa_mac = c("C1qa", "Fcgr3", "Ccr2", "Tgfbi"),
+    MhcHigh = c("Cd74", "H2-Aa", "Plbd1", "Ciita", "Il1r2", "Ifitm1", "Napsa",
+        "H2-Oa", "H2-DMb2", "Cd209a", "Plet1"),
+    Batf3_Dc = c("Flt3", "Batf3", "Zbtb46", "Ccr7", "Fscn1", "Ccl22", "Nfkb2"),
+    Cd14Mono = c("S100a8", "S100a9", "S100a12", "Vcan", "Cd36", "Cd14"),
+    Cd16Mono = c("Tcf7l2", "Mtss1", "Serpina1", "Rhoc", "Ms4a7", "Lilra1",
+        "Ifitm2", "Fcgr3a", "Siglec10", "Cx3cr1", "Lilrb1"),
+    Nlrp3Mac = c("Nlrp3", "Ereg", "Itgax", "Il1b", "Vegfa", "Ccl3"),
+    C1qcTAM = c("Apoe", "C1qa", "C1qb", "C1qc", "Cd81", "Trem2", "Acp5",
+        "Apoc1", "Prdm1", "Csf1r", "Slamf8"),
+    Spp1TAM = c("Cstb", "Spp1", "Fn1", "Abl2", "Pparg", "Sdc4", "Rgcc",
+        "Adm", "Marco"),
+    Mast = c("Ms4a2", "Cpa3", "Ccl3", "Ccl6", "Tpsb2", "Tpsd1", "Hdc",
+        "Slc18a2", "Gata2", "Kit", "Il1r1", "Hpgds", "Vwa5a"),
+    pDC = c("Gzmb", "Tcf4", "Jchain", "Mzb1", "Irf7", "Il3ra", "Slc15a4"),
+    Cd1c_cDC2 = c("Axl", "Fcer1a", "Cd1c", "Fcgr2b", "Cd1e", "Cd1a"),
+    Batf3_cDC1 = c("Cst7", "Dapp1", "Flt3", "C1orf54", "Ccr7", "Ido1"),
+    C1qaMac = c("C1qa", "Marco", "Apoe", "Cxcl10", "Cd163", "Cd68"),
+    Thbs1Mac = c("Thbs1", "Fcn1", "Vcan", "S100a12", "Nlrp3", "Il1b"),
+    MafbMac = c("Klf2", "Klf4", "Nr4a1", "Nr4a2", "Hsph1", "Lyve1", "Vegfa"),
+    Mki67Mac = c("Stmn1", "Top2a", "Mki67", "Mcm4", "Mcm5", "Mcm7"),
+    S100a8Mac = c("S100a8", "Ctsa", "Ctsd", "S100a2", "S100a6"),
+    Spp1Mac = c("Spp1", "Tmsb4x", "Tmsb10", "Ctsb"),
+    Neutro = c("S011a9", "S100a8", "Csfr", "Clec4d"),
+    cDC2_Cd209a = c("Cd209a"),
+    cDC2_Itgax = c("Itgax"),
+    cDC1_Clec9a = c("Cd207", "Clec9a", "Batf3"),
+    cDC1_Ccl22 = c("Ccl22", "Ccr7", "Fscn1", "Ccl5"),
+    Mono_Ly6c2 = c("Cxcl10", "Ly6c1", "Fcgr1", "Ly6c2"),
+    Mono_Nr4a1 = c("Fn1", "Nr4a1"),
+    Mono_Itga1 = c("Itga1", "Cd300a", "Clec4a1"),
+    Macro_Maf = c("Maf", "Cx3cr1", "Ccl2"),
+    Macro_Mgl2 = c("Mgl2", "Clec4b1"),
+    Macro_Vegfa = c("Vegfa", "Hilpda", "Hmox1", "Spp1"))
+)
+pdf("output/figures/mac_subset_marks.pdf",
+    width = 12,
+    height = 12)
+gridExtra::grid.table(cell_assign)
+DimPlot(combined_data,
+    pt.size = 1,
+    label = TRUE) +
+    coord_fixed()
+DimPlot(combined_data,
+    pt.size = 1,
+    split.by = "timepoint") +
+    coord_fixed()
+for (i in names(murine_mac_marks)) {
+    p <- r_feature_plot(combined_data,
+        title = i,
+        features = murine_mac_marks[[i]],
+        ncol = 3)
+    print(p)
+}
+dev.off()
+r_feature_plot(combined_data,
+        title = "Irf4",
+        features = "Irf4")
+```
+
+### Final cell type assignment
+```{r assignCellTypes}
+cell_assignments <-
+    read_csv("misc/macrophage_cell_type.csv",
+             show_col_types = FALSE) %>%
+    pull(label.main, name = cluster)
+
+combined_data <-
+    RenameIdents(combined_data, cell_assignments)
+combined_data$cell_type_final <- Idents(combined_data)
 ```
 
 ### Run DE on the mouse samples
@@ -645,102 +735,6 @@ harmonization <-
 
 ```
 
-## Code to try to assess stromal cell type assignment
-
-```{r stromal_cell_type_assignment}
-combined_data <- FindClusters(combined_data, resolution = 1)
-# Make cell assignments by cluster for each of the references separately
-cell_assign <- lapply(ref, function(x) {
-    a <- SingleR::SingleR(as.SingleCellExperiment(combined_data),
-        ref = x,
-        labels = x$label.fine,
-        clusters = combined_data$seurat_clusters)
-    a <- tibble(cluster = rownames(a), type = a$labels)
-    return(a)
-})
-# Combine the assignments into a table
-cell_assign <- left_join(cell_assign[[1]], cell_assign[[2]], by = "cluster") %>%
-    left_join(., cell_assign[[3]], by = "cluster") %>%
-    as_tibble()
-colnames(cell_assign) <- c("cluster", "immune", "whole_mouse", "lung")
-cell_assign
-# Add the tables that Yogesh assembled from PMID 35690521
-mac_subsets <- 
-    readxl::read_excel("misc/Finalmacrophage_and_monocyte_subsets.xlsx") %>%
-    filter(Species == "Mouse" & Assay == "RNA")
-mac_subsets$Major[mac_subsets$Major == 0] <- "Minor"
-mac_subsets$Major[mac_subsets$Major == 1] <- "Major"
-mac_subsets$Annotation <- paste0(mac_subsets$Annotation, "_", mac_subsets$Major)
-mac_subsets <- select(mac_subsets, Annotation, ID)
-mac_subset_list <- lapply(unique(mac_subsets$Annotation), function(s) {
-    return(mac_subsets$ID[mac_subsets$Annotation == s])
-})
-names(mac_subset_list) <- unique(mac_subsets$Annotation)
-# Examine the macrophage clusters more closely
-# Look at markers published in PMID 35732118, 35812401, 32302573, 35690521
-murine_mac_marks <- c(mac_subset_list, list(
-    inflam_mono = c("Ms4a4c", "Irf7", "Plac8", "Ly6c2"),
-    Cd36_Spp1_mac = c("Clec4d", "Hmox1", "Cd36", "Spp1", "Arg1"),
-    C1qa_mac = c("C1qa", "Fcgr3", "Ccr2", "Tgfbi"),
-    MhcHigh = c("Cd74", "H2-Aa", "Plbd1", "Ciita", "Il1r2", "Ifitm1", "Napsa",
-        "H2-Oa", "H2-DMb2", "Cd209a", "Plet1"),
-    Batf3_Dc = c("Flt3", "Batf3", "Zbtb46", "Ccr7", "Fscn1", "Ccl22", "Nfkb2"),
-    Cd14Mono = c("S100a8", "S100a9", "S100a12", "Vcan", "Cd36", "Cd14"),
-    Cd16Mono = c("Tcf7l2", "Mtss1", "Serpina1", "Rhoc", "Ms4a7", "Lilra1",
-        "Ifitm2", "Fcgr3a", "Siglec10", "Cx3cr1", "Lilrb1"),
-    Nlrp3Mac = c("Nlrp3", "Ereg", "Itgax", "Il1b", "Vegfa", "Ccl3"),
-    C1qcTAM = c("Apoe", "C1qa", "C1qb", "C1qc", "Cd81", "Trem2", "Acp5",
-        "Apoc1", "Prdm1", "Csf1r", "Slamf8"),
-    Spp1TAM = c("Cstb", "Spp1", "Fn1", "Abl2", "Pparg", "Sdc4", "Rgcc",
-        "Adm", "Marco"),
-    Mast = c("Ms4a2", "Cpa3", "Ccl3", "Ccl6", "Tpsb2", "Tpsd1", "Hdc",
-        "Slc18a2", "Gata2", "Kit", "Il1r1", "Hpgds", "Vwa5a"),
-    pDC = c("Gzmb", "Tcf4", "Jchain", "Mzb1", "Irf7", "Il3ra", "Slc15a4"),
-    Cd1c_cDC2 = c("Axl", "Fcer1a", "Cd1c", "Fcgr2b", "Cd1e", "Cd1a"),
-    Batf3_cDC1 = c("Cst7", "Dapp1", "Flt3", "C1orf54", "Ccr7", "Ido1"),
-    C1qaMac = c("C1qa", "Marco", "Apoe", "Cxcl10", "Cd163", "Cd68"),
-    Thbs1Mac = c("Thbs1", "Fcn1", "Vcan", "S100a12", "Nlrp3", "Il1b"),
-    MafbMac = c("Klf2", "Klf4", "Nr4a1", "Nr4a2", "Hsph1", "Lyve1", "Vegfa"),
-    Mki67Mac = c("Stmn1", "Top2a", "Mki67", "Mcm4", "Mcm5", "Mcm7"),
-    S100a8Mac = c("S100a8", "Ctsa", "Ctsd", "S100a2", "S100a6"),
-    Spp1Mac = c("Spp1", "Tmsb4x", "Tmsb10", "Ctsb"),
-    Neutro = c("S011a9", "S100a8", "Csfr", "Clec4d"),
-    cDC2_Cd209a = c("Cd209a"),
-    cDC2_Itgax = c("Itgax"),
-    cDC1_Clec9a = c("Cd207", "Clec9a", "Batf3"),
-    cDC1_Ccl22 = c("Ccl22", "Ccr7", "Fscn1", "Ccl5"),
-    Mono_Ly6c2 = c("Cxcl10", "Ly6c1", "Fcgr1", "Ly6c2"),
-    Mono_Nr4a1 = c("Fn1", "Nr4a1"),
-    Mono_Itga1 = c("Itga1", "Cd300a", "Clec4a1"),
-    Macro_Maf = c("Maf", "Cx3cr1", "Ccl2"),
-    Macro_Mgl2 = c("Mgl2", "Clec4b1"),
-    Macro_Vegfa = c("Vegfa", "Hilpda", "Hmox1", "Spp1"))
-)
-pdf("output/figures/mac_subset_marks.pdf",
-    width = 12,
-    height = 12)
-gridExtra::grid.table(cell_assign)
-DimPlot(combined_data,
-    pt.size = 1,
-    label = TRUE) +
-    coord_fixed()
-DimPlot(combined_data,
-    pt.size = 1,
-    split.by = "timepoint") +
-    coord_fixed()
-for (i in names(murine_mac_marks)) {
-    p <- r_feature_plot(combined_data,
-        title = i,
-        features = murine_mac_marks[[i]],
-        ncol = 3)
-    print(p)
-}
-dev.off()
-r_feature_plot(combined_data,
-        title = "Irf4",
-        features = "Irf4")
-```
-
 ### Count cell types
 ```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
 # imm_cells <- celldex::ImmGenData()
@@ -777,7 +771,21 @@ cell_type_list <-
 
 ### Make supplemental figures with all cell types
 ```{r deGrowthFactorMetsLoop, dependson='deGrowthFactorMetsCellType'}
-target_genes <- cm_target_genes
+target_genes <-
+    read_tsv("misc/growth_factor_genes.txt",
+             col_names = "human_gene",
+             show_col_types = FALSE) %>%
+    left_join(read_tsv("misc/HMD_HumanPhenotype.rpt",
+                       col_names = c("human_gene",
+                                     "h_entrez",
+                                     "mouse_gene",
+                                     "mgi",
+                                     "pheno",
+                                     "junk"),
+                       show_col_types = FALSE) %>%
+        select(human_gene, mouse_gene),
+        by = "human_gene") %>%
+    select(mouse_gene)
 
 target_genes <-
     left_join(target_genes,

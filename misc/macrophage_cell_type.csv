@@ -1,0 +1,27 @@
+cluster,label.main,label.fine
+0,Alveolar Mac,Alveolar Mac
+1,TAM,TAM
+2,Alveolar Mac,Alveolar Mac
+3,TAM,TAM
+4,TAM,TAM
+5,Alveolar Mac,Alveolar Mac
+6,TAM,TAM
+7,Endothelial,Endothelial
+8,TIM,TIM
+9,Interstitial Mac,Reg-TAM
+10,Monocyte,Monocyte
+11,Fibroblast,Col14a1+ fibroblast
+12,Fibroblast,Col13a1+ fibroblast
+13,TAM,Prolif TAM
+14,Endothelial,Endothelial
+15,Dendritic ,Dendritic 
+16,NK,NK
+17,TAM,TAM
+18,Dendritic ,Dendritic 
+19,Mesothelial,Mesothelial
+20,Epithelial,Epithelial
+21,Epithelial,Epithelial
+22,Alveolar Mac,Prolif Alveolar Mac
+23,Epithelial,Epithelial
+24,Alveolar Mac,Alveolar Mac
+25,Alveolar Mac,Alveolar Mac
