@@ -1613,8 +1613,6 @@ bubble <- ggplot(top5up_down$Primary_tumor_vs_Early_metastatic_tumor,
                     low = "#3942c0",
                     midpoint = 0.05)
 bubble
-
-
 ```
 
 
@@ -1790,4 +1788,8 @@ complex_heatmap
 sessionInfo()
 ```
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 499d570c1d7def9aa854ee63f09ca6529dc104e1
 

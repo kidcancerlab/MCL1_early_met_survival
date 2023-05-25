@@ -3,7 +3,7 @@
 .Rhistory
 .RData
 .Ruserdata
-
-# Figures and other intermediate files generated
-output/*
+output
+Early_vs_Late_Analysis_cache
+Early_vs_Late_Analysis_files
 *.png
