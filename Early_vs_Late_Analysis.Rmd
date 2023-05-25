@@ -548,7 +548,7 @@ combined_data$group <-
 
 ## Code to try to assess stromal cell type assignment
 To assess the stromal cell type assignment, we will use the SingleR package to assign cell types from a couple of different cell references. We then use marker genes taken from several different papers to assess the cell type assignments. We then use a combination of these to assign cell types for each cluster.
-```{r stromal_cell_type_assignment}
+```{r stromal_cell_type_assignment, eval=FALSE}
 # Make cell assignments by cluster for each of the references separately
 cell_assign <- lapply(ref, function(x) {
     a <- SingleR::SingleR(as.SingleCellExperiment(combined_data),
@@ -671,7 +671,7 @@ overall_de <-
 set.seed(1337)
 celltype_mouse_plot <-
     DimPlot(combined_data,
-            group.by = "cell_type",
+            group.by = "cell_type_final",
             split.by = "group",
             label = TRUE,
             repel = TRUE) +#,
@@ -680,7 +680,7 @@ celltype_mouse_plot <-
 
 celltype_mouse_plot_all <-
     DimPlot(combined_data,
-            group.by = "cell_type",
+            group.by = "cell_type_final",
             label = TRUE,
             repel = TRUE) +#,
     #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
@@ -692,50 +692,10 @@ two_plots <-
                ncol = 2,
                widths = c(1, 4))
 
-
 ggsave("output/figures/mouse_umaps_celltype_2.pdf",
        width = 20,
        height = 8,
        plot = two_plots)
-
-test <- process_seurat(combined_data, resolution = 1)
-
-table(test$cell_type, test$seurat_clusters) %>%
-    as.data.frame() %>%
-    dplyr::rename(cell_type = Var1,
-                  cluster = Var2,
-                  count = Freq) %>%
-    ggplot(aes(x = cluster,
-               y = cell_type,
-               fill = log10(count),
-               label = count)) +
-    geom_tile() +
-    geom_text()
-
-DimPlot(test, cols = sample(rainbow(n = length(unique(test$cell_type)))))
-DimPlot(test,
-        cells.highlight = WhichCells(test,
-                                     expression = seurat_clusters == 16))
-
-# Not using this yet, but we might want to use it to fix cell type names
-harmonization <-
-    c("Alv Mf" =               "Alveolar macrophages",
-      "^Art$" =                "Arterial endothelial cells",
-      "AT2 1" =                "AT2 cells",
-      "AT2 2" =                "AT2 cells",
-      "B cell 1" =             "B cells",
-      "^Cap$" =                "Capillary endothelial cells",
-      "^Cap-a$" =              "Capillary endothelial cells - aerocytes",
-      "Ciliated" =             "Ciliated cells",
-      "Club" =                 "Club cells",
-      "ILC2" =                 "Innate lymphoid cells",
-      "Int Mf" =               "Interstital macrophages",
-      "^Lymph$" =              "Lymphatic endothelial cells",
-      "^Mono$" =               "Monocytes",
-      "NK cell" =              "Natural killer cells",
-      "natural killer cells" = "Natural killer cells",
-      "^Vein$" =               "Venous endothelial cells")
-
 ```
 
 ### Count cell types
