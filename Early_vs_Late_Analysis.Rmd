@@ -31,8 +31,8 @@ library(tidyverse)
 library(rrrSingleCellUtils)
 theme_set(theme_bw())
 theme_update(plot.title = element_text(hjust = 0.5))
-library(ggplot2)
 library(patchwork)
+library(msigdbr)
 
 # Set random generator seed to facilitate reproducibility
 set.seed(888)
@@ -53,18 +53,75 @@ do
 done
 ```
 
+### Get cell type reference datasets
+GSE151974
+```{r mouse_refs}
+ref_path <- "/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse"
+
+data_matrix <-
+    read.csv(paste0(ref_path,
+                    "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
+             header = TRUE) %>%
+    column_to_rownames("X")
+
+metadata <-
+    read.csv(paste0(ref_path,
+                    "/GSE151974/GSE151974_cell_metadata_postfilter.csv.gz"),
+             header = TRUE) %>%
+    column_to_rownames("X")
+
+mouse_lung_ref <-
+    CreateSeuratObject(counts = data_matrix,
+                       project = "mouse_lung_ref",
+                       meta.data = metadata) %>%
+    subset(Oxygen == "Normoxia")
+
+mouse_lung_ref$cell_type <- mouse_lung_ref$CellType
+mouse_lung_ref$dataset <- "GSE151974"
+
+qs::qsave(mouse_lung_ref,
+          file = paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))
+
+mouse_immune <- celldex::ImmGenData()
+# This label is not informative
+mouse_immune <-
+    mouse_immune[mouse_immune$label.main != "Stromal cells", ]
+
+mouse_rna <- celldex::MouseRNAseqData()
+```
+
+## Function to use for cell annotation
+```{r annotate_cells_fun}
+annot_cells <- function(sobject) {
+    cell_assign <-
+        SingleR::SingleR(as.SingleCellExperiment(sobject),
+                         ref = list(GetAssayData(mouse_lung_ref),
+                                    mouse_immune,
+                                    mouse_rna),
+                         labels = list(mouse_lung_ref$cell_type,
+                                       mouse_immune$label.main,
+                                       mouse_rna$label.fine),
+                         aggr.ref = TRUE)
+
+    sobject$cell_type <- cell_assign$labels
+
+    sobject$cell_score <- cell_assign$scores %>%
+        apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
+
+    return(sobject)
+}
+```
+
 # Load and Process Datasets
 Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
 ```{r load}
 sample_list <- read_tsv("misc/sample_cutoffs.txt", show_col_types = FALSE)
 
-sobj_list <- list()
-
-for (i in seq_len(nrow(sample_list))) {
+sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
     species_pattern <- sample_list$species_pattern[i]
     obj_name <- sample_list$obj_name[i]
 
-    sobj_list[[obj_name]] <-
+    sobj <-
         tenx_load_qc(paste0("/home/gdrobertslab/lab/Counts/",
                             sample_list$sample_name[i],
                             "/filtered_feature_bc_matrix"),
@@ -73,19 +130,23 @@ for (i in seq_len(nrow(sample_list))) {
 
     # Add metadata to dataset
     for (colname in colnames(sample_list)) {
-        sobj_list[[obj_name]][[colname]] <- sample_list[[colname]][i]
+        sobj[[colname]] <- sample_list[[colname]][i]
     }
 
-    sobj_list[[obj_name]] <-
-        sobj_list[[obj_name]] %>%
-        subset(nCount_RNA >= sample_list$ncount_rna_min[i] &
-               nCount_RNA <= sample_list$ncount_rna_max[i] &
-               percent.mt <= sample_list$mt_max[i]) %>%
-        process_seurat()
+    cutoff_tibble <-
+        tribble(~feature, ~min_val, ~max_val,
+                "nCount_RNA",
+                sample_list$ncount_rna_min[i],
+                sample_list$ncount_rna_max[i],
+
+                "percent.mt",
+                0,
+                sample_list$mt_max[i])
 
     plotted <-
-        feature_hist(sobj_list[[obj_name]],
-                     features = c("nCount_RNA", "percent.mt"))
+        feature_hist(sobj,
+                     features = c("nCount_RNA", "percent.mt"),
+                     cutoff_table = cutoff_tibble)
 
     ggsave(paste0("output/figures/feature_hist_",
                   obj_name,
@@ -93,14 +154,32 @@ for (i in seq_len(nrow(sample_list))) {
            width = 10,
            height = 10,
            plot = plotted)
-}
-save(sobj_list,
-     file = "output/rdata/sobj_list.rds")
+
+    sobj <-
+        sobj %>%
+        subset(nCount_RNA >= sample_list$ncount_rna_min[i] &
+               nCount_RNA <= sample_list$ncount_rna_max[i] &
+               percent.mt <= sample_list$mt_max[i]) %>%
+        process_seurat()
+
+    # Add cell type annotation if mouse
+    if (species_pattern == "^mm10_") {
+        sobj <-
+            annot_cells(sobj)
+    }
+
+    return(sobj)
+}, mc.cores = 5)
+
+names(sobj_list) <- sample_list$obj_name
+
+qs::qsave(sobj_list,
+          file = "output/rdata/sobj_list.qs")
 ```
 
 ## UMAP with all samples
 ```{r umap_alldependson='load', cache.vars=''}
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 all_samples <-
     merge(sobj_list[[1]],
           y = sobj_list[2:length(sobj_list)],
@@ -119,10 +198,14 @@ plot_name <-
     theme_roberts() +
     labs(title = NULL)
 
+plot_name
+
 ggsave("output/figures/umap_all_samples.pdf",
        width = 4,
        height = 6,
        plot = plot_name)
+
+
 ```
 
 ## Human Cell Only Processing
@@ -196,43 +279,57 @@ umap_group_split
 
 ```
 
-## Mouse Cell Only Processing
+## Run DE on human cells for GSEA and IPA
+```{r human-de, dependson="load"}
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 
+tumor_three_tp <-
+    merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h", "d49_pos_h", "tibia_tumor_h")],
+          add.cell.ids = c("d14", "d28", "d49", "tibia")) %>%
+    process_seurat(resolution = 0.15, run_umap_dims = 1:20)
+
+# Save human mCherry+ merged object
+qs::qsave(tumor, file = "output/rdata/d14_28_49_tumor.qs")
+```
+
+## Mouse Cell Only Processing
+Removing this chunk as it's not used anywhere
 ```{r mouse-processing, dependson="load"}
 # Mouse
 # Merge day 14 and day 35 Seurat objects together
-microenv <-
-    merge(sobj_list[["d14_pos_m"]],
-          y = sobj_list[["d35_pos_m"]],
-          add.cell.ids = c("d14", "d35"),
-          project = "Early vs Late OS Mets")
+# microenv <-
+#     merge(sobj_list[["d14_pos_m"]],
+#           y = sobj_list[c("d28_pos_m", "d49_pos_m", "S0006_mouse")],
+#           add.cell.ids = c("d14", "d28", "d49", "S0006"),
+#           project = "Early vs Late OS Mets")
 
-# Process merged object
-microenv <-
-    NormalizeData(microenv) %>%
-    ScaleData() %>%
-    FindVariableFeatures() %>%
-    RunPCA() %>%
-    FindNeighbors(dims = 1:30) %>%
-    FindClusters(resolution = 0.15, k.param = 30) %>%
-    RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
+# # Process merged object
+# microenv <-
+#     NormalizeData(microenv) %>%
+#     ScaleData() %>%
+#     FindVariableFeatures() %>%
+#     RunPCA() %>%
+#     FindNeighbors(dims = 1:30) %>%
+#     FindClusters(resolution = 0.15, k.param = 30) %>%
+#     RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
 
-# Plot UMAP
-env_umap <- r_dim_plot(microenv,
-        title = "Stroma at metastatic timepoints",
-        label = TRUE)
-env_umap
+# # Plot UMAP
+# env_umap <- r_dim_plot(microenv,
+#         title = "Stroma at metastatic timepoints",
+#         label = TRUE)
+# env_umap
 
-env_umap_split <- r_dim_plot(microenv,
-        title = "Stroma at metastatic timepoints",
-        split.by = "group")
-env_umap_split
+# env_umap_split <- r_dim_plot(microenv,
+#         title = "Stroma at metastatic timepoints",
+#         split.by = "group")
+# env_umap_split
 
-timepoints_panel <- (umap_group | umap_group_split) / (env_umap | env_umap_split)
-timepoints_panel
+# timepoints_panel <- (umap_group | umap_group_split) / (env_umap | env_umap_split)
+# timepoints_panel
 
-# Save mouse mCherry+ merged Seurat object
-save(microenv, file = "output/rdata/early_late_microenv.RData")
+# # Save mouse mCherry+ merged Seurat object
+# save(microenv, file = "output/rdata/early_late_microenv.RData")
 ```
 
 # Plotting Expression: Genes of Interest
@@ -281,7 +378,7 @@ feature_plot <-
     FeaturePlot(tumor,
                 features = gene_list,
                 split.by = "group",
-                order = T)
+                order = TRUE)
 
 # Save as pdf
 pdf("output/figures/early_late_feature_plot.pdf",
@@ -362,7 +459,7 @@ dot_plot <-
     DotPlot(tumor_cc,
             features = gene_list,
             group.by = "group",
-            scale = F,
+            scale = FALSE,
             cols = c("blue", "red")) +
   RotatedAxis() +
   coord_fixed()
@@ -393,7 +490,7 @@ feature_plot <-
     FeaturePlot(tumor_cc,
                 features = gene_list,
                 split.by = "group",
-                order = T) +
+                order = TRUE) +
   theme(aspect.ratio = 1)
 
 # Save as pdf
@@ -407,25 +504,7 @@ dev.off()
 ## Growth factor expression in normal vs lungs with mets
 Also plot each time point separately as a time-course
 ```{r deGrowthFactorMets, dependson='load'}
-cm_target_genes <-
-    read_tsv("misc/growth_factor_genes.txt",
-             col_names = "human_gene",
-             show_col_types = FALSE) %>%
-    left_join(read_tsv("misc/HMD_HumanPhenotype.rpt",
-                       col_names = c("human_gene",
-                                     "h_entrez",
-                                     "mouse_gene",
-                                     "mgi",
-                                     "pheno",
-                                     "junk"),
-                       show_col_types = FALSE) %>%
-        select(human_gene, mouse_gene),
-        by = "human_gene") %>%
-    select(mouse_gene)
-
-load("output/rdata/sobj_list.rds")
-
-samples <- c("S0006_mouse", "d14_pos_m", "d28_pos_m", "d49_pos_m")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 
 sobj_list$S0006_mouse$group_name <- "Control lung"
 
@@ -438,7 +517,11 @@ combined_data <-
           y = list(sobj_list[["d14_pos_m"]],
                    sobj_list[["d28_pos_m"]],
                    sobj_list[["d49_pos_m"]])) %>%
-    process_seurat()
+    process_seurat(umap_metric = "cosine",
+                   run_umap_dims = 1:10,
+                   umap_n_neighbors = 30,
+                   neighbor_k_param = 20,
+                   resolution = 1)
 
 combined_data$sample_description <-
     factor(combined_data$sample_description,
@@ -454,9 +537,126 @@ combined_data$sample_name <-
                          "S0082",
                          "S0084",
                          "S0093"))
+
+combined_data$group <-
+    factor(combined_data$group,
+           levels = c("Mouse_control_lung",
+                      "Early_mouse_stroma",
+                      "Midpoint_mouse_stroma",
+                      "Late_mouse_stroma"))
 ```
 
-### Run DE on the tumor samples
+## Code to try to assess stromal cell type assignment
+To assess the stromal cell type assignment, we will use the SingleR package to assign cell types from a couple of different cell references. We then use marker genes taken from several different papers to assess the cell type assignments. We then use a combination of these to assign cell types for each cluster.
+```{r stromal_cell_type_assignment}
+# Make cell assignments by cluster for each of the references separately
+cell_assign <- lapply(ref, function(x) {
+    a <- SingleR::SingleR(as.SingleCellExperiment(combined_data),
+        ref = x,
+        labels = x$label.fine,
+        clusters = combined_data$seurat_clusters)
+    a <- tibble(cluster = rownames(a), type = a$labels)
+    return(a)
+})
+# Combine the assignments into a table
+cell_assign <- left_join(cell_assign[[1]], cell_assign[[2]], by = "cluster") %>%
+    left_join(., cell_assign[[3]], by = "cluster") %>%
+    as_tibble()
+colnames(cell_assign) <- c("cluster", "immune", "whole_mouse", "lung")
+cell_assign
+# Add the tables that Yogesh assembled from PMID 35690521
+mac_subsets <-
+    readxl::read_excel("misc/Finalmacrophage_and_monocyte_subsets.xlsx") %>%
+    filter(Species == "Mouse" & Assay == "RNA")
+mac_subsets$Major[mac_subsets$Major == 0] <- "Minor"
+mac_subsets$Major[mac_subsets$Major == 1] <- "Major"
+mac_subsets$Annotation <- paste0(mac_subsets$Annotation, "_", mac_subsets$Major)
+mac_subsets <- select(mac_subsets, Annotation, ID)
+mac_subset_list <- lapply(unique(mac_subsets$Annotation), function(s) {
+    return(mac_subsets$ID[mac_subsets$Annotation == s])
+})
+names(mac_subset_list) <- unique(mac_subsets$Annotation)
+# Examine the macrophage clusters more closely
+# Look at markers published in PMID 35732118, 35812401, 32302573, 35690521
+murine_mac_marks <- c(mac_subset_list, list(
+    inflam_mono = c("Ms4a4c", "Irf7", "Plac8", "Ly6c2"),
+    Cd36_Spp1_mac = c("Clec4d", "Hmox1", "Cd36", "Spp1", "Arg1"),
+    C1qa_mac = c("C1qa", "Fcgr3", "Ccr2", "Tgfbi"),
+    MhcHigh = c("Cd74", "H2-Aa", "Plbd1", "Ciita", "Il1r2", "Ifitm1", "Napsa",
+        "H2-Oa", "H2-DMb2", "Cd209a", "Plet1"),
+    Batf3_Dc = c("Flt3", "Batf3", "Zbtb46", "Ccr7", "Fscn1", "Ccl22", "Nfkb2"),
+    Cd14Mono = c("S100a8", "S100a9", "S100a12", "Vcan", "Cd36", "Cd14"),
+    Cd16Mono = c("Tcf7l2", "Mtss1", "Serpina1", "Rhoc", "Ms4a7", "Lilra1",
+        "Ifitm2", "Fcgr3a", "Siglec10", "Cx3cr1", "Lilrb1"),
+    Nlrp3Mac = c("Nlrp3", "Ereg", "Itgax", "Il1b", "Vegfa", "Ccl3"),
+    C1qcTAM = c("Apoe", "C1qa", "C1qb", "C1qc", "Cd81", "Trem2", "Acp5",
+        "Apoc1", "Prdm1", "Csf1r", "Slamf8"),
+    Spp1TAM = c("Cstb", "Spp1", "Fn1", "Abl2", "Pparg", "Sdc4", "Rgcc",
+        "Adm", "Marco"),
+    Mast = c("Ms4a2", "Cpa3", "Ccl3", "Ccl6", "Tpsb2", "Tpsd1", "Hdc",
+        "Slc18a2", "Gata2", "Kit", "Il1r1", "Hpgds", "Vwa5a"),
+    pDC = c("Gzmb", "Tcf4", "Jchain", "Mzb1", "Irf7", "Il3ra", "Slc15a4"),
+    Cd1c_cDC2 = c("Axl", "Fcer1a", "Cd1c", "Fcgr2b", "Cd1e", "Cd1a"),
+    Batf3_cDC1 = c("Cst7", "Dapp1", "Flt3", "C1orf54", "Ccr7", "Ido1"),
+    C1qaMac = c("C1qa", "Marco", "Apoe", "Cxcl10", "Cd163", "Cd68"),
+    Thbs1Mac = c("Thbs1", "Fcn1", "Vcan", "S100a12", "Nlrp3", "Il1b"),
+    MafbMac = c("Klf2", "Klf4", "Nr4a1", "Nr4a2", "Hsph1", "Lyve1", "Vegfa"),
+    Mki67Mac = c("Stmn1", "Top2a", "Mki67", "Mcm4", "Mcm5", "Mcm7"),
+    S100a8Mac = c("S100a8", "Ctsa", "Ctsd", "S100a2", "S100a6"),
+    Spp1Mac = c("Spp1", "Tmsb4x", "Tmsb10", "Ctsb"),
+    Neutro = c("S011a9", "S100a8", "Csfr", "Clec4d"),
+    cDC2_Cd209a = c("Cd209a"),
+    cDC2_Itgax = c("Itgax"),
+    cDC1_Clec9a = c("Cd207", "Clec9a", "Batf3"),
+    cDC1_Ccl22 = c("Ccl22", "Ccr7", "Fscn1", "Ccl5"),
+    Mono_Ly6c2 = c("Cxcl10", "Ly6c1", "Fcgr1", "Ly6c2"),
+    Mono_Nr4a1 = c("Fn1", "Nr4a1"),
+    Mono_Itga1 = c("Itga1", "Cd300a", "Clec4a1"),
+    Macro_Maf = c("Maf", "Cx3cr1", "Ccl2"),
+    Macro_Mgl2 = c("Mgl2", "Clec4b1"),
+    Macro_Vegfa = c("Vegfa", "Hilpda", "Hmox1", "Spp1"))
+)
+pdf("output/figures/mac_subset_marks.pdf",
+    width = 12,
+    height = 12)
+gridExtra::grid.table(cell_assign)
+DimPlot(combined_data,
+    pt.size = 1,
+    label = TRUE) +
+    coord_fixed()
+DimPlot(combined_data,
+    pt.size = 1,
+    split.by = "timepoint") +
+    coord_fixed()
+for (i in names(murine_mac_marks)) {
+    p <- r_feature_plot(combined_data,
+        title = i,
+        features = murine_mac_marks[[i]],
+        ncol = 3)
+    print(p)
+}
+dev.off()
+r_feature_plot(combined_data,
+        title = "Irf4",
+        features = "Irf4")
+```
+
+### Final cell type assignment
+```{r assignCellTypes}
+cell_assignments <-
+    read_csv("misc/macrophage_cell_type.csv",
+             show_col_types = FALSE) %>%
+    pull(label.main, name = cluster)
+
+combined_data <-
+    RenameIdents(combined_data, cell_assignments)
+combined_data$cell_type_final <- Idents(combined_data)
+
+qs::qsave(combined_data,
+          file = "output/rdata/combined_data.qs")
+```
+
+### Run DE on the mouse samples
 ```{r deGrowthFactorMetsDE, dependson='deGrowthFactorMets'}
 Idents(combined_data) <- combined_data$group_name
 
@@ -466,36 +666,129 @@ overall_de <-
                 logfc.threshold = 0)
 ```
 
-### Assign cell types
-```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
-imm_cells <- celldex::ImmGenData()
-mouse_rna <- celldex::MouseRNAseqData()
+### Plot cell types of mouse cells
+```{r mouse_ref_labels}
+set.seed(1337)
+celltype_mouse_plot <-
+    DimPlot(combined_data,
+            group.by = "cell_type",
+            split.by = "group",
+            label = TRUE,
+            repel = TRUE) +#,
+    #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
+        NoLegend()
 
-cell_assign <-
-    SingleR::SingleR(as.SingleCellExperiment(combined_data),
-                     ref = list(imm_cells,
-                                mouse_rna),
-                     labels = list(imm_cells$label.main,
-                                   mouse_rna$label.main))
+celltype_mouse_plot_all <-
+    DimPlot(combined_data,
+            group.by = "cell_type",
+            label = TRUE,
+            repel = TRUE) +#,
+    #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
+        NoLegend()
+
+two_plots <-
+    wrap_plots(celltype_mouse_plot_all,
+               celltype_mouse_plot,
+               ncol = 2,
+               widths = c(1, 4))
+
+
+ggsave("output/figures/mouse_umaps_celltype_2.pdf",
+       width = 20,
+       height = 8,
+       plot = two_plots)
+
+test <- process_seurat(combined_data, resolution = 1)
+
+table(test$cell_type, test$seurat_clusters) %>%
+    as.data.frame() %>%
+    dplyr::rename(cell_type = Var1,
+                  cluster = Var2,
+                  count = Freq) %>%
+    ggplot(aes(x = cluster,
+               y = cell_type,
+               fill = log10(count),
+               label = count)) +
+    geom_tile() +
+    geom_text()
+
+DimPlot(test, cols = sample(rainbow(n = length(unique(test$cell_type)))))
+DimPlot(test,
+        cells.highlight = WhichCells(test,
+                                     expression = seurat_clusters == 16))
+
+# Not using this yet, but we might want to use it to fix cell type names
+harmonization <-
+    c("Alv Mf" =               "Alveolar macrophages",
+      "^Art$" =                "Arterial endothelial cells",
+      "AT2 1" =                "AT2 cells",
+      "AT2 2" =                "AT2 cells",
+      "B cell 1" =             "B cells",
+      "^Cap$" =                "Capillary endothelial cells",
+      "^Cap-a$" =              "Capillary endothelial cells - aerocytes",
+      "Ciliated" =             "Ciliated cells",
+      "Club" =                 "Club cells",
+      "ILC2" =                 "Innate lymphoid cells",
+      "Int Mf" =               "Interstital macrophages",
+      "^Lymph$" =              "Lymphatic endothelial cells",
+      "^Mono$" =               "Monocytes",
+      "NK cell" =              "Natural killer cells",
+      "natural killer cells" = "Natural killer cells",
+      "^Vein$" =               "Venous endothelial cells")
+
+```
+
+### Count cell types
+```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
+# imm_cells <- celldex::ImmGenData()
+# mouse_rna <- celldex::MouseRNAseqData()
+
+# cell_assign <-
+#     SingleR::SingleR(as.SingleCellExperiment(combined_data),
+#                      ref = list(imm_cells,
+#                                 mouse_rna),
+#                      labels = list(imm_cells$label.main,
+#                                    mouse_rna$label.main))
+
+# combined_data$cell_type <-
+#     cell_assign$labels %>%
+#     str_replace("DC", "Dendritic cells")
+# combined_data$cell_score <-
+#     cell_assign$scores %>%
+#     apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
+combined_data$cell_type <-
+    str_remove(combined_data$cell_type, " [12]$")
 
 combined_data$cell_type <-
-    cell_assign$labels %>%
-    str_replace("DC", "Dendritic cells")
-combined_data$cell_score <-
-    cell_assign$scores %>%
-    apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
+    str_replace_all(combined_data$cell_type,
+                harmonization)
+
 
 cell_type_list <-
     table(combined_data$cell_type, combined_data$group) %>%
     as.data.frame() %>%
     group_by(Var1) %>%
     summarize(sum = sum(Freq), .groups = "drop") %>%
-    filter(sum > 50)
+    filter(sum > 10)
 ```
 
 ### Make supplemental figures with all cell types
 ```{r deGrowthFactorMetsLoop, dependson='deGrowthFactorMetsCellType'}
-target_genes <- cm_target_genes
+target_genes <-
+    read_tsv("misc/growth_factor_genes.txt",
+             col_names = "human_gene",
+             show_col_types = FALSE) %>%
+    left_join(read_tsv("misc/HMD_HumanPhenotype.rpt",
+                       col_names = c("human_gene",
+                                     "h_entrez",
+                                     "mouse_gene",
+                                     "mgi",
+                                     "pheno",
+                                     "junk"),
+                       show_col_types = FALSE) %>%
+        select(human_gene, mouse_gene),
+        by = "human_gene") %>%
+    select(mouse_gene)
 
 target_genes <-
     left_join(target_genes,
@@ -759,68 +1052,742 @@ for (factor_name in c("group_name", "sample_description")) {
 ```
 
 
+## Human Down Sampling for human
+```{r}
+#load the sobj
+load("output/rdata/sobj_list.rds")
+#subset human only
+human_objects_list <- sobj_list[c("tibia_tumor_h",
+                                "d14_pos_h",
+                                "d28_pos_h",
+                                "d49_pos_h" )]
+
+human_objects_list
+
+#Downsample
+for (i in seq_len(length(human_objects_list))) {
+    temp_obj <- human_objects_list[[i]]
+    current_n_cells <- length(Cells(temp_obj))
+    sub_n_cells <- min(1500, current_n_cells)
+    temp_obj <- temp_obj[, sample(1:current_n_cells, sub_n_cells)]
+    human_objects_list[[i]] <- temp_obj
+}
+
+human_objects_list
+
+#Dimplot with down sample
+downsample_umap_human_only <-
+    merge(human_objects_list[["tibia_tumor_h"]],
+            y = human_objects_list[c("d14_pos_h",
+                            "d28_pos_h",
+                            "d49_pos_h")],
+            add.cell.ids = c("Primary_tumor",
+                            "Early_metastatic_tumor",
+                            "Midpoint_metastatic_tumor",
+                            "Late_metastatic_tumor"),
+            project = "downsample_umap_human_only") %>%
+            process_seurat()
+
+#Dimplot
+downsample_human_combined <-
+    DimPlot(downsample_umap_human_only) +
+    ggtitle(label="Primary and metastatic tumor") +
+    theme_roberts() +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    coord_fixed()
+downsample_human_combined
+
+#split by
+downsample_human_split <-
+    DimPlot(downsample_umap_human_only, split.by = "group") +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend() +
+            coord_fixed()
+downsample_human_split
+
+#rearrange the panels for umap space
+downsample_human_split$data$group <-
+    factor(x = downsample_human_split$data$group,
+           levels = c("Primary_tumor",
+                      "Early_metastatic_tumor",
+                      "Midpoint_metastatic_tumor",
+                      "Late_metastatic_tumor"))
+
+downsample_human_split
+
+#save the plot
+ggsave("output/figures/downsample_human_combined.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_human_combined)
+
+ggsave("output/figures/downsample_human_split.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_human_split)
+
+```
+
+
+## Mouse Down Sampling and Dimplot
+```{r}
+#subset human only
+mouse_objects_list <- sobj_list[c("S0006_mouse",
+                                "d14_pos_m",
+                                "d28_pos_m",
+                                "d49_pos_m")]
+
+mouse_objects_list
+
+#Downsample
+for (i in seq_len(length(mouse_objects_list))) {
+    temp_obj <- mouse_objects_list[[i]]
+    current_n_cells <- length(Cells(temp_obj))
+    sub_n_cells <- min(4500, current_n_cells)
+    temp_obj <- temp_obj[, sample(1:current_n_cells, sub_n_cells)]
+    mouse_objects_list[[i]] <- temp_obj
+}
+mouse_objects_list
+
+set.seed(4444)
+#downsampled objects are merged and seurat process for dimplot
+downsample_umap_mouse_only <-
+    merge(mouse_objects_list[["S0006_mouse"]],
+            y = mouse_objects_list[c("d14_pos_m",
+                            "d28_pos_m",
+                            "d49_pos_m")],
+            add.cell.ids = c("Mouse_control_lung",
+                            "Early_mouse_stroma",
+                            "Midpoint_mouse_stroma",
+                            "Late_mouse_stroma"),
+            project = "downsample_umap_mouse_only") %>%
+            process_seurat(resolution=0.3)
+
+#combined
+downsample_mouse_combined <- DimPlot(downsample_umap_mouse_only) +
+                        theme_roberts() +
+                        labs(title = "Mouse control and stroma") +
+                        theme(plot.title = element_text(hjust = 0.5)) + 
+                        coord_fixed()
+downsample_mouse_combined
+
+#split by
+downsample_mouse_split <- 
+            DimPlot(downsample_umap_mouse_only, split.by = "group") +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend() + coord_fixed()
+downsample_mouse_split
+
+
+#rearrange the panels for umap space
+downsample_mouse_split$data$group <- 
+    factor(x = downsample_mouse_split$data$group,
+           levels = c("Mouse_control_lung",
+                      "Early_mouse_stroma",
+                       "Midpoint_mouse_stroma",
+                       "Late_mouse_stroma"))
+
+downsample_mouse_split
+
+#save the plot
+ggsave("output/figures/downsample_mouse_combined.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_mouse_combined)
+
+ggsave("output/figures/downsample_mouse_split.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_mouse_split)
+
+
+#all combined
+
+plots_all <-
+    downsample_human_combined + downsample_human_split +
+    downsample_mouse_combined + downsample_mouse_split +
+    plot_layout(widths = c(1, 4))
+plots_all
+
+
+#save the plot
+ggsave("output/figures/plots_all.pdf",
+       width = 10,
+       height = 4,
+       plot = plots_all)
+
+```
+
+
+
+## Non-downsample UMAP plots
+```{r}
+#load the sobj
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+
+#subset the sobj of interest for human and mouse and merge
+#for human
+umap_human_only <-
+    merge(sobj_list[["tibia_tumor_h"]],
+          y = sobj_list[c("d14_pos_h",
+                            "d28_pos_h",
+                            "d49_pos_h")],
+          add.cell.ids = c("Primary_tumor",
+                            "Early_metastatic_tumor",
+                            "Midpoint_metastatic_tumor",
+                            "Late_metastatic_tumor"),
+           project = "umap_human_only") %>%
+    process_seurat()
+
+#Human only combined umap: this puts them in the same space/comparable
+combined_human_only <- 
+    DimPlot(umap_human_only) +
+    ggtitle(label = "Primary and metastatic tumor") +
+    theme_roberts() +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    coord_fixed()
+
+combined_human_only
+
+#Dimplot
+human_umaps <- DimPlot(umap_human_only, split.by = "group") +
+            theme_roberts() +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            NoLegend() + coord_fixed()
+
+human_umaps
+
+#rearrange the panels for umap space
+human_umaps$data$group <- factor(x = human_umaps$data$group,
+                                levels = c("Primary_tumor",
+                                        "Early_metastatic_tumor",
+                                        "Midpoint_metastatic_tumor",
+                                        "Late_metastatic_tumor"))
+human_umaps
+
+#for mouse
+umap_mouse_only <-
+    merge(sobj_list[["S0006_mouse"]],
+            y = sobj_list[c("d14_pos_m",
+                            "d28_pos_m",
+                            "d49_pos_m")],
+            add.cell.ids = c("Mouse_control_lung",
+                            "Early_mouse_stroma",
+                            "Midpoint_mouse_stroma",
+                            "Late_mouse_stroma"),
+            project = "umap_mouse_only") %>%
+            process_seurat()
+
+#Dimplot
+mouse_umaps_combined <- DimPlot(umap_mouse_only) +
+                        theme_roberts() +
+                        theme(plot.title = element_text(hjust = 0.5)) +
+                        NoLegend() + 
+                        coord_fixed()
+
+mouse_umaps <- DimPlot(umap_mouse_only, split.by = "group") +
+               theme_roberts() +
+               theme(plot.title = element_text(hjust = 0.5)) +
+               NoLegend() + 
+               coord_fixed()
+
+mouse_umaps
+
+#rearrange the panels for umap space
+mouse_umaps$data$group <- factor(x = mouse_umaps$data$group,
+                                levels = c("Mouse_control_lung",
+                                        "Early_mouse_stroma",
+                                        "Midpoint_mouse_stroma",
+                                        "Late_mouse_stroma"))
+
+mouse_umaps
+
+combined_human_only
+
+combined_plots <- (human_umaps / mouse_umaps)
+combined_plots
+
+combined_plots_all <- (combined_human_only + (human_umaps / mouse_umaps)) 
+                         + plot_layout(widths = c(1, 4))
+combined_plots_all
+
+
+#save the plot
+ggsave("output/figures/combined_human_only.pdf",
+       width = 6,
+       height = 6,
+       plot = combined_plots)
+
+ggsave("output/figures/combined_plots.pdf",
+       width = 8,
+       height = 6,
+       plot = combined_plots)
+
+ggsave("output/figures/combined_plots_all.pdf",
+       width = 12,
+       height = 6,
+       plot = combined_plots)
+
+
+```
+
+
+## GSEA_KEGG
+GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from: 
+                  S0037 (primary) redo human cells to S0082(early) human cells 
+                  S0082 (early) human cell to S0084(midpoint) human cells 
+                  S0084(midpoint) human cells to S0093 (late) human cells 
+                  S0082(early) human cells to S0093(late) human cells 
+```{r}
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+#we want all of the item in the same space, do combine and run process seurat
+human_only <-
+    merge(sobj_list[["tibia_tumor_h"]],
+          y = sobj_list[c("d14_pos_h",
+                          "d28_pos_h",
+                          "d49_pos_h")],
+          add.cell.ids = c("Primary_tumor",
+                           "Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor",
+                           "Late_metastatic_tumor"),
+          project      =   "human_only") %>%
+          process_seurat()
+
+#set the idents
+Idents(human_only) <- "group"
+
+#make a table to do the find markers in loop
+marker_table <- tribble(~item1, ~item2,
+                        "Primary_tumor", "Early_metastatic_tumor",
+                        "Early_metastatic_tumor", "Midpoint_metastatic_tumor",
+                        "Midpoint_metastatic_tumor", "Late_metastatic_tumor",
+                        "Late_metastatic_tumor", "Primary_tumor")
+
+#make a list that you can append to
+markers_list <- list()
+gsea_gene_lists <- list()
+#FindMarkers since we comaring across only two groups
+for (i in 1:nrow(marker_table)) {
+        df <- FindMarkers(human_only,
+                         ident.1 = marker_table$item1[i],
+                         ident.2 = marker_table$item2[i],
+                         min.pct = 0.1,
+                         logfc.threshold = 0)
+        df$gene <- rownames(df) 
+        gsea_list <- df %>% 
+              arrange(desc(avg_log2FC)) %>%
+              dplyr::select(gene, avg_log2FC)
+        gsea_list <- deframe(gsea_list)
+        filename1 <- paste0(marker_table$item1[i],
+                            "_",
+                            marker_table$item2[i],
+                            ".tsv")
+        filename2 <- paste0(marker_table$item1[i],
+                            "_vs_",
+                            marker_table$item2[i],
+                            ".tsv")
+        write_tsv(as.data.frame(df), file = filename1)
+        write_tsv(as.data.frame(gsea_list), file = filename2)
+        markers_list[[paste0(marker_table$item1[i],
+                            "_",
+                            marker_table$item2[i])]] <- df
+        gsea_gene_lists[[paste0(marker_table$item1[i],
+                            "_vs_",
+                            marker_table$item2[i])]] <- gsea_list
+}
+
+
+
+# Running the GSEA_KEGG
+# select dataset and then aggregate the genes into a list
+kegg_ref <- msigdbr::msigdbr(species = "Homo sapiens",
+                category = "C2",
+                subcategory = "CP:KEGG") %>%
+                split(x = .$gene_symbol, f = .$gs_name)
+
+
+#Run the GSEA in loop for all the things
+kegg_results_list <- list()
+top5up_down <- list()
+for (item in names(gsea_gene_lists)) {
+    print(item)
+    result <- fgsea::fgseaMultilevel(kegg_ref,
+                            gsea_gene_lists[[item]],
+                            minSize = 15,      # min size of gene set to test
+                            maxSize = 500,     # max size of a gene set to test
+                            nPerm = 1000) %>%  # number of permutations to test
+                            arrange(padj)
+    result <- result %>% arrange(desc(NES))
+    top5up <- result %>% slice_head(n = 5)
+    top5down <- result %>% slice_tail(n = 5)
+    temp_top5 <- rbind(top5up, top5down)
+    top5up_down[[item]] <- temp_top5 %>% 
+                             dplyr::select(pathway, NES)
+    filename <- paste0(markers_list[item],".tsv")
+    write_tsv(as.data.frame(result), file = filename)
+    kegg_results_list[[item]] <- result
+}
+
+
+#Visualize the top 5 up and downregulated pathways
+primary_vs_early <-
+    top5up_down$Primary_tumor_vs_Early_metastatic_tumor
+early_vs_midpoint <-
+    top5up_down$Early_metastatic_tumor_vs_Midpoint_metastatic_tumor
+
+
+
+#Use loop to do what
+#for (item in top5up_down) {
+    #print(item)
+    #for (stuff in item$pathway) {
+        #print(stuff)
+        #for (i in stuff) {
+            #stuff <- stringr::str_replace_all(stuff, "_", " ")
+        #}
+    #}
+#}
+
+
+#Replace the "_" with space
+primary_vs_early$pathway <-
+    stringr::str_replace_all(primary_vs_early$pathway, "_", " ")
+
+#Remove KEGG word
+primary_vs_early$pathway <-
+    stringr::str_replace_all(primary_vs_early$pathway, "KEGG", "")
+
+#Pass the Pathways name as Sentence
+primary_vs_early$pathway <-
+    stringr::str_to_sentence(primary_vs_early$pathway)
+
+#prepare the dataframe for the plot 
+df <- data.frame(
+    label_y = c(1, 1, 1, 1, 1, -1, -1, -1, -1, -1),
+    order = c(1, 2, 3, 4, 5, 5, 4, 3, 2, 1))
+
+#Practice in one of them
+primary_vs_early <- cbind(primary_vs_early, df)
+
+df$tissue = "Primary vs Early Geneset"
+
+
+#prepare the label for the plot
+lab4plot <- tibble(y = c(-4, 4),
+                   x = c(0.5, 0.5),
+                   label = as.factor(c("Upregulated in Primary Tumor",
+                                      "Upregulated in Early Metastatic Tumor")),
+                   levels = c("Primary vs Early Geneset"))
+
+## Ran IPA on the output of FindMarkers above
+Used a logFC cutoff of -1/1 and p_val_adj cutoff of 0.05
+```{r plotIPA}
+path_top_5 <-
+    read_tsv(list.files("output/pathway_analysis",
+                        pattern = "_paths.txt",
+                        full.names = TRUE),
+         id = "sample",
+         col_names = c("pathway",
+                       "neg_log_pval",
+                       "ratio",
+                       "z_score",
+                       "genes"),
+         show_col_types = FALSE,
+         skip = 1) %>%
+    filter(neg_log_pval > log10(0.05) &
+           !is.nan(z_score) &
+           z_score != 0) %>%
+    mutate(sample = str_remove(sample, ".+/") %>%
+               str_remove("_paths.txt")) %>%
+    group_by(sample, z_score > 0) %>%
+    arrange(desc(abs(z_score)), .by_group = TRUE) %>%
+    slice_head(n = 5) %>%
+    select(sample, pathway, z_score) %>%
+    mutate(order = seq_len(n()),
+           label_y = z_score / abs(z_score),
+           sample = str_remove(sample, "_tumor$") %>%
+                    str_replace_all("metastatic", "metastasis") %>%
+                    str_replace("tumor", "vs") %>%
+                    str_replace_all("_",
+                                    " ") %>%
+                    str_to_sentence() %>%
+                    factor(., levels = c("Primary vs early metastasis",
+                                         "Early metastasis vs midpoint metastasis",
+                                         "Midpoint metastasis vs late metastasis",
+                                         "Late metastasis vs primary"))) %>%
+    ungroup()
+
+two_way_plot <- function(data) {
+    lab4plot <-
+        tibble(y = c(-3, 3),
+               x = c(0.2, 0.2),
+               label = as.factor(c(paste("Upregulated in",
+                                         str_remove(data$sample[1],
+                                                    ".+vs") %>%
+                                            str_to_lower()),
+                                   paste("Upregulated in",
+                                         str_remove(data$sample[1],
+                                                    "vs.+") %>%
+                                            str_to_lower()))))
+
+    plot_name <-
+        ggplot() +
+        geom_bar(data = data,
+                 aes(x = -1 * order,
+                     y = z_score,
+                     fill = z_score > 0),
+                 stat = "identity",
+                 alpha = 0.8) +
+            coord_flip() +
+            geom_hline(yintercept = 0,
+                       color = "black",
+                       linewidth = 0.5) +
+            geom_text(data = data,
+                      aes(x = -1 * order,
+                          y = label_y * 3,
+                          label = pathway),
+                      size = 1.5) +
+            geom_text(data = lab4plot,
+                      aes(x = x,
+                          y = y,
+                          label = label),
+                      fontface = "bold",
+                      size = 1.5) +
+            scale_fill_manual(values = plot_cols) +
+            # theme_roberts(title_font_size = 5,
+            #               axis_font_size = 4) +
+            theme(strip.background = element_rect(color = "white",
+                                                  fill = "white"),
+                  legend.position = "none",
+                  panel.grid.major = element_blank(),
+                  panel.grid.minor = element_blank(),
+                  panel.border = element_blank(),
+                  axis.line.x = element_line(color = "black"),
+                  axis.line.y = element_blank(),
+                  axis.text.y = element_blank(),
+                  axis.ticks.y = element_blank(),
+                  plot.title = element_text(size = 5, face = "bold"),
+                  axis.text.x = element_text(size = 3)) +
+            labs(title = data$sample[1],
+                 y = "",
+                 x = "") +
+            ylim(-5, 5)
+
+    return(plot_name)
+}
+
+plot_list <- lapply(levels(path_top_5$sample),
+                    function(x) {
+    two_way_plot(filter(path_top_5, sample == x))
+})
+
+pdf("output/figures/Top_5_IPA_pathways.pdf",
+    width = 4,
+    height = 4)
+wrap_plots(plot_list, ncol = 1, heights = c(5, 5, 1.8, 3))
+dev.off()
+
+
+# Save as PDF
+pdf("/home/gdrobertslab/lab/Analysis/Yogesh/MCL1_early_met_survival/Figures/figure_2c.pdf",
+    width = 6,
+    height = 6)
+
+figure_2c
+dev.off()
+
+save(figure_2c, file = "Figures/figure_2c.pdf.RData")
+
+
+# make bubble plot
+bubble <- ggplot(top5up_down$Primary_tumor_vs_Early_metastatic_tumor,
+                aes(x = NES,
+                    y = pathway,
+                    size = size,
+                    color = padj)) +
+                geom_point() +
+                scale_color_gradient2(high = "#ff0000",
+                    mid = "#ffffff",
+                    low = "#3942c0",
+                    midpoint = 0.05)
+bubble
+
+
+```
+
+
+
+# Nichenetr
+sender : all stroma/mouse cells from the early+mid
+receiver : Human cells/tumor from the early+mid 
+Genes/markers tested : differential expression from ident1=early and ident2=mid
+```{r}  
+load("output/rdata/sobj_list.rds")
+
+#seurat object: sender of signal
+sender_sobj <- 
+    merge(sobj_list[["d14_pos_m"]],
+          y = sobj_list[c("d28_pos_m")],
+          add.cell.ids = c("Early_mouse_stroma",
+                            "Midpoint_mouse_stroma"),
+            project = "sender_sobj") %>%
+            process_seurat()
+
+#seurat object: receiver of signal
+receiver_sobj <- 
+    merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h")],
+          add.cell.ids = c("Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor"),
+          project      =   "receiver_sobj") %>%
+          process_seurat()
+
+# combine all of the objects
+sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h", 
+                          "d14_pos_m",
+                          "d28_pos_m")],
+          add.cell.ids = c("receiver",
+                           "receiver",
+                           "sender",
+                           "sender"),
+          project      =   "sender_receiver_sobj") %>%
+          process_seurat()
+
+```
+
+## Get the pre-defined model data
+```{r}
+ligand_target_matrix <-
+    readRDS( "nichenetrfiles/ligand_target_matrix.rds")
+
+lr_network <-
+    readRDS("nichenetrfiles/lr_network.rds")
+
+weighted_networks <-
+    readRDS("nichenetrfiles/weighted_networks.rds")
+
+weighted_networks_lr <-
+    weighted_networks$lr_sig %>%
+    inner_join(lr_network %>% distinct(from, to),
+               by = c("from", "to"))
+
+
+```
+
+
+## Convert the gene names in model to mouse
+```{r}
+#makes capital lettered human genes (CXCL) to mouse format (Cxcl)
+lr_network <-
+    lr_network %>%
+    mutate(from = convert_human_to_mouse_symbols(from),
+           to = convert_human_to_mouse_symbols(to)) %>%
+    drop_na()
+
+#converts the colnames human genes name format to mouse format
+colnames(ligand_target_matrix) <-
+    ligand_target_matrix %>%
+    colnames() %>%
+    convert_human_to_mouse_symbols()
+
+#converts the rownames human genes name format to mouse format
+rownames(ligand_target_matrix) <-
+    ligand_target_matrix %>%
+    rownames() %>%
+    convert_human_to_mouse_symbols()
+
+#removes the NAs or the genes that were umable to convert
+ligand_target_matrix <-
+    ligand_target_matrix %>%
+    .[!is.na(rownames(ligand_target_matrix)),
+        !is.na(colnames(ligand_target_matrix))]
+
+#Convert the human format genes to mouse format in the file and drops NAs
+weighted_networks_lr <-
+    weighted_networks_lr %>%
+    mutate(from = convert_human_to_mouse_symbols(from),
+           to = convert_human_to_mouse_symbols(to)) %>%
+    drop_na()
+
+
+```
+
+## Nichenetr Analysis
+```{r}
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+combined_data <- qs::qread("output/rdata/combined_data.qs")
+
+#seurat objects sender of signal
+sender_sobj <- 
+    merge(sobj_list[["d14_pos_m"]],
+          y = sobj_list[c("d28_pos_m")],
+          add.cell.ids = c("Early_mouse_stroma",
+                            "Midpoint_mouse_stroma"),
+            project = "sender_sobj") %>%
+            process_seurat()
+
+#seurat objects receiver of signal
+receiver_sobj <- 
+    merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h")],
+          add.cell.ids = c("Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor"),
+          project      =   "receiver_sobj") %>%
+          process_seurat()
+
+#The combined object for both sender and receiver
+sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h", 
+                          "d14_pos_m",
+                          "d28_pos_m")],
+          add.cell.ids = c("Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor",
+                           "Early_mouse_stroma",
+                           "Midpoint_mouse_stroma"),
+          project      =   "sender_receiver_sobj") %>%
+          process_seurat()
+
+#set the same idents for all the objects
+Idents(sender_sobj) <- "group"
+Idents(receiver_sobj) <- "group"
+Idents(sender_receiver_sobj) <- "group"
+
+#Gives the list of target genes from the receiver dataset
+gset_stuff <- find_tar_genes(receiver_sobj, 
+                            id1 = "Early_metastatic_tumor",
+                            id2 = "Midpoint_metastatic_tumor",
+                            pval = 0.05,
+                            logfc = 0.25,
+                            spec = "human")
+
+#Download the ligand_receptor reference
+rrrSingleCellUtils:::gen_lig_receptor_ref()
+
+# Finds the ligands and genes target relationship in the sender and receiver: basically runs the nichenetr analysis
+fl_object <- find_ligands(sender_receiver_sobj,                    #sender seurat object
+                        gset = gset_stuff,                         #genes list form the receiver
+                        receiver = unique(Idents(receiver_sobj)),  
+                        senders = unique(Idents(sender_sobj)),
+                        gset_spec = "human",                   
+                        rec_spec = "human",
+                        send_spec = "mouse")
+
+#makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
+complex_heatmap <- plot_complex_heatmap(fl_object,
+                                        grid_color_low = "gray95",
+                                        grid_color_high = "midnightblue",
+                                        point_color_low = "white",
+                                        point_color_high = "darkred")
+
+complex_heatmap
+
+```
+
 ```{r, cache=FALSE}
 sessionInfo()
 ```
 
 
-## UMAP plots
-```{r}
-#load the sobj
-load("output/rdata/sobj_list.rds")
-
-#subset the sobj of interest
-umap_subset <-
-    sobj_list[c("S0006_mouse",
-                "d14_pos_m",
-                "d28_pos_m",
-                "d49_pos_m",
-                "tibia_tumor_h",
-                "d14_pos_h",
-                "d28_pos_h",
-                "d49_pos_h"
-                )]
-
-
-umapplots <- list()
-for (object in umap_subset) {
-    umapplots[[object$obj_name[[1]]]] <- DimPlot(object) +
-            ggtitle(label=object$group) +
-            theme_roberts() +
-            theme(plot.title = element_text(hjust = 0.5)) +
-            NoLegend()
-}
-
-# Combine the plots using wrap_plots()
-combined_plots <- wrap_plots(umapplots)
-
-# Add a layout specification
-combined_plots <- combined_plots + plot_layout(nrow = 2)
-
-# Display the final plot
-combined_plots
-
-#save the plot
-ggsave("output/figures/combined_plots.pdf",
-       width = 4,
-       height = 3,
-       plot = combined_plots)
-
-
-#Human only combined umap
-human_only <-
-    merge(sobj_list[["tibia_tumor_h"]],
-          y = sobj_list[c("d14_pos_h", "d28_pos_h", "d49_pos_h")],
-          add.cell.ids = c("Primary tumor", "Early metastatic tumor",
-                        "Midpoint metastatic tumor", "Late metastatic tumor"),
-          project = "human_only") %>%
-          process_seurat()
-
-umap_human_only <- DimPlot(human_only) +
-                    ggtitle(label="Primary and metastatic tumor") +
-                    theme_roberts() +
-                    theme(plot.title = element_text(hjust = 0.5)) +
-                    NoLegend()
-
-umap_human_only
-```
