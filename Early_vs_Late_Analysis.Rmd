@@ -549,6 +549,24 @@ combined_data$group <-
 ## Code to try to assess stromal cell type assignment
 To assess the stromal cell type assignment, we will use the SingleR package to assign cell types from a couple of different cell references. We then use marker genes taken from several different papers to assess the cell type assignments. We then use a combination of these to assign cell types for each cluster.
 ```{r stromal_cell_type_assignment, eval=FALSE}
+# Load the already-processed mouse lung reference
+ref_path <- "/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse"
+load(paste0(ref_path, "/GSE151974/mouse_lung_ref.RData"))
+mouse_lung_ref$label.fine <- mouse_lung_ref$cell_type
+
+# Add it to immune and whole-mouse references
+ref <- list(
+    immune = celldex::ImmGenData(),
+    whole_mouse = celldex::MouseRNAseqData(),
+    lung = as.SingleCellExperiment(mouse_lung_ref)
+)
+
+# ref_slots <- c("label.fine", "label.main", "cell_type")
+# names(ref_slots) <- names(ref)
+
+# Cluster the combined data to a finer resolution
+combined_data <- FindClusters(combined_data, resolution = 1)
+
 # Make cell assignments by cluster for each of the references separately
 cell_assign <- lapply(ref, function(x) {
     a <- SingleR::SingleR(as.SingleCellExperiment(combined_data),
@@ -700,29 +718,6 @@ ggsave("output/figures/mouse_umaps_celltype_2.pdf",
 
 ### Count cell types
 ```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
-# imm_cells <- celldex::ImmGenData()
-# mouse_rna <- celldex::MouseRNAseqData()
-
-# cell_assign <-
-#     SingleR::SingleR(as.SingleCellExperiment(combined_data),
-#                      ref = list(imm_cells,
-#                                 mouse_rna),
-#                      labels = list(imm_cells$label.main,
-#                                    mouse_rna$label.main))
-
-# combined_data$cell_type <-
-#     cell_assign$labels %>%
-#     str_replace("DC", "Dendritic cells")
-# combined_data$cell_score <-
-#     cell_assign$scores %>%
-#     apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
-combined_data$cell_type <-
-    str_remove(combined_data$cell_type, " [12]$")
-
-combined_data$cell_type <-
-    str_replace_all(combined_data$cell_type,
-                harmonization)
-
 
 cell_type_list <-
     table(combined_data$cell_type, combined_data$group) %>%
