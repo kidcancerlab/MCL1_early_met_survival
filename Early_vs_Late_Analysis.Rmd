@@ -346,9 +346,9 @@ gene_list <-
 dot_plot <-
     DotPlot(tumor,
             features = gene_list,
-            group.by = "group",
+            group.by = "timepoint",
             scale = FALSE,
-            cols = c("blue", "red")) +
+            cols = c("lightgoldenrod", "darkred")) +
   RotatedAxis() +
   coord_fixed()
 
@@ -363,7 +363,7 @@ dev.off()
 vln_plot <-
     VlnPlot(tumor,
             features = gene_list,
-            group.by = "group") +
+            group.by = "timepoint") +
     RotatedAxis()
 
 # Save as pdf
@@ -377,7 +377,7 @@ dev.off()
 feature_plot <-
     FeaturePlot(tumor,
                 features = gene_list,
-                split.by = "group",
+                split.by = "timepoint",
                 order = TRUE)
 
 # Save as pdf
@@ -691,7 +691,6 @@ two_plots <-
                celltype_mouse_plot,
                ncol = 2,
                widths = c(1, 4))
-
 
 ggsave("output/figures/mouse_umaps_celltype_2.pdf",
        width = 20,
@@ -1480,6 +1479,7 @@ lab4plot <- tibble(y = c(-4, 4),
                    label = as.factor(c("Upregulated in Primary Tumor",
                                       "Upregulated in Early Metastatic Tumor")),
                    levels = c("Primary vs Early Geneset"))
+```
 
 ## Ran IPA on the output of FindMarkers above
 Used a logFC cutoff of -1/1 and p_val_adj cutoff of 0.05
@@ -1661,6 +1661,7 @@ sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
 ligand_target_matrix <-
     readRDS( "nichenetrfiles/ligand_target_matrix.rds")
 
+# Use a strict definition of the network
 lr_network <-
     readRDS("nichenetrfiles/lr_network.rds")
 
