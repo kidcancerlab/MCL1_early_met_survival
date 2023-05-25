@@ -1133,6 +1133,10 @@ ggsave("output/figures/downsample_human_split.pdf",
 ## Mouse Down Sampling and Dimplot
 ```{r}
 #subset human only
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+combined_data <- qs::qread("output/rdata/combined_data.qs")
+
+
 mouse_objects_list <- sobj_list[c("S0006_mouse",
                                 "d14_pos_m",
                                 "d28_pos_m",
@@ -1720,60 +1724,72 @@ weighted_networks_lr <-
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 combined_data <- qs::qread("output/rdata/combined_data.qs")
 
-#seurat objects sender of signal
-sender_sobj <- 
-    merge(sobj_list[["d14_pos_m"]],
-          y = sobj_list[c("d28_pos_m")],
-          add.cell.ids = c("Early_mouse_stroma",
-                            "Midpoint_mouse_stroma"),
-            project = "sender_sobj") %>%
-            process_seurat()
+#seurat objects sender of signal, subset form the combined_data with cell annotation
+sender_sobj <- subset(combined_data, 
+                      obj_name == c("d14_pos_m", "d28_pos_m")) %>%
+               process_seurat()                      
+
+#visualize what cell types are there in sender
+DimPlot(sender_sobj, group.by = "cell_type_final") 
+
+# Combined mid and late tumor and label it established 
 
 #seurat objects receiver of signal
+established_tumor_sobj <- 
+    merge(sobj_list[["d28_pos_h"]],
+          y = sobj_list[c("d49_pos_h")],
+          add.cell.ids = c("Established_metastatic_tumor",
+                           "Established_metastatic_tumor"),
+          project      =   "established_tumor_sobj")
+
+established_tumor_sobj$group <- "Established_metastatic_tumor"
+
+#make the receiver obj
 receiver_sobj <- 
-    merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h")],
+    merge(sobj_list$d14_pos_h,
+          y = established_tumor_sobj,
           add.cell.ids = c("Early_metastatic_tumor",
-                           "Midpoint_metastatic_tumor"),
+                           "Established_metastatic_tumor"),
           project      =   "receiver_sobj") %>%
           process_seurat()
 
+#insert the cell_type_final column to be consistent with the idents
+receiver_sobj$cell_type_final <- receiver_sobj$group
+
+receiver_sobj$cell_type_final <- 
+    stringr::str_replace_all(receiver_sobj$cell_type_final, "_", " ")
+
 #The combined object for both sender and receiver
-sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h", 
-                          "d14_pos_m",
-                          "d28_pos_m")],
-          add.cell.ids = c("Early_metastatic_tumor",
-                           "Midpoint_metastatic_tumor",
-                           "Early_mouse_stroma",
-                           "Midpoint_mouse_stroma"),
-          project      =   "sender_receiver_sobj") %>%
-          process_seurat()
+sender_receiver_sobj <- merge(sender_sobj, 
+                              y = receiver_sobj,
+                              add.cell.ids = c ("sender_sobj",
+                                                "receiver_sobj"),
+                              project      = "sender_receiver_sobj") %>%
+                        process_seurat()
 
-#set the same idents for all the objects
-Idents(sender_sobj) <- "group"
 Idents(receiver_sobj) <- "group"
-Idents(sender_receiver_sobj) <- "group"
-
 #Gives the list of target genes from the receiver dataset
 gset_stuff <- find_tar_genes(receiver_sobj, 
                             id1 = "Early_metastatic_tumor",
-                            id2 = "Midpoint_metastatic_tumor",
+                            id2 = "Established_metastatic_tumor",
                             pval = 0.05,
                             logfc = 0.25,
                             spec = "human")
 
-#Download the ligand_receptor reference
-rrrSingleCellUtils:::gen_lig_receptor_ref()
+#set the same idents for all the objects
+Idents(sender_sobj) <- "cell_type_final"
+Idents(receiver_sobj) <- "cell_type_final"
+Idents(sender_receiver_sobj) <- "cell_type_final"
 
 # Finds the ligands and genes target relationship in the sender and receiver: basically runs the nichenetr analysis
-fl_object <- find_ligands(sender_receiver_sobj,                    #sender seurat object
-                        gset = gset_stuff,                         #genes list form the receiver
-                        receiver = unique(Idents(receiver_sobj)),  
-                        senders = unique(Idents(sender_sobj)),
-                        gset_spec = "human",                   
-                        rec_spec = "human",
-                        send_spec = "mouse")
+fl_object <-
+    find_ligands(sender_receiver_sobj,                    #sender seurat object
+                 gset = gset_stuff,                         #genes list form the receiver
+                 receiver = unique(Idents(receiver_sobj)),
+                 senders = unique(Idents(sender_sobj)),
+                 gset_spec = "human",
+                 rec_spec = "human",
+                 send_spec = "mouse")
 
 #makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
 complex_heatmap <- plot_complex_heatmap(fl_object,
@@ -1783,6 +1799,13 @@ complex_heatmap <- plot_complex_heatmap(fl_object,
                                         point_color_high = "darkred")
 
 complex_heatmap
+
+ggsave("output/figures/complex_heatmap.pdf",
+       width = 12,
+       height = 6,
+       plot = complex_heatmap)
+
+dev.off()
 
 ```
 
