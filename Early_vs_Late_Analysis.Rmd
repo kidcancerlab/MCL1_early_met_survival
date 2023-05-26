@@ -118,6 +118,8 @@ Datasets are from tumors collected from mouse lungs at early (day 14 post inject
 sample_list <- read_tsv("misc/sample_cutoffs.txt", show_col_types = FALSE)
 
 sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
+    message(paste("Starting sample", i))
+
     species_pattern <- sample_list$species_pattern[i]
     obj_name <- sample_list$obj_name[i]
 
@@ -168,6 +170,7 @@ sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
             annot_cells(sobj)
     }
 
+    message(paste("Sample", i, "completed"))
     return(sobj)
 }, mc.cores = 5)
 
@@ -279,61 +282,6 @@ umap_group_split
 
 ```
 
-## Run DE on human cells for GSEA and IPA
-```{r human-de, dependson="load"}
-sobj_list <- qs::qread("output/rdata/sobj_list.qs")
-
-tumor_three_tp <-
-    merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h", "d49_pos_h", "tibia_tumor_h")],
-          add.cell.ids = c("d14", "d28", "d49", "tibia")) %>%
-    process_seurat(resolution = 0.15, run_umap_dims = 1:20)
-
-# Save human mCherry+ merged object
-qs::qsave(tumor, file = "output/rdata/d14_28_49_tumor.qs")
-```
-
-## Mouse Cell Only Processing
-Removing this chunk as it's not used anywhere
-```{r mouse-processing, dependson="load"}
-# Mouse
-# Merge day 14 and day 35 Seurat objects together
-# microenv <-
-#     merge(sobj_list[["d14_pos_m"]],
-#           y = sobj_list[c("d28_pos_m", "d49_pos_m", "S0006_mouse")],
-#           add.cell.ids = c("d14", "d28", "d49", "S0006"),
-#           project = "Early vs Late OS Mets")
-
-# # Process merged object
-# microenv <-
-#     NormalizeData(microenv) %>%
-#     ScaleData() %>%
-#     FindVariableFeatures() %>%
-#     RunPCA() %>%
-#     FindNeighbors(dims = 1:30) %>%
-#     FindClusters(resolution = 0.15, k.param = 30) %>%
-#     RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
-
-# # Plot UMAP
-# env_umap <- r_dim_plot(microenv,
-#         title = "Stroma at metastatic timepoints",
-#         label = TRUE)
-# env_umap
-
-# env_umap_split <- r_dim_plot(microenv,
-#         title = "Stroma at metastatic timepoints",
-#         split.by = "group")
-# env_umap_split
-
-# timepoints_panel <- (umap_group | umap_group_split) / (env_umap | env_umap_split)
-# timepoints_panel
-
-# # Save mouse mCherry+ merged Seurat object
-# save(microenv, file = "output/rdata/early_late_microenv.RData")
-```
-
-# Plotting Expression: Genes of Interest
-
 ## Human Cells Only: Pre-cell cycle regression
 ```{r human_geneplots, dependson=c("load","human-processing")}
 # Dot plot of expression of genes of interest by group (early/late)
@@ -346,9 +294,9 @@ gene_list <-
 dot_plot <-
     DotPlot(tumor,
             features = gene_list,
-            group.by = "group",
+            group.by = "timepoint",
             scale = FALSE,
-            cols = c("blue", "red")) +
+            cols = c("lightgoldenrod", "darkred")) +
   RotatedAxis() +
   coord_fixed()
 
@@ -363,7 +311,7 @@ dev.off()
 vln_plot <-
     VlnPlot(tumor,
             features = gene_list,
-            group.by = "group") +
+            group.by = "timepoint") +
     RotatedAxis()
 
 # Save as pdf
@@ -377,7 +325,7 @@ dev.off()
 feature_plot <-
     FeaturePlot(tumor,
                 features = gene_list,
-                split.by = "group",
+                split.by = "timepoint",
                 order = TRUE)
 
 # Save as pdf
@@ -1312,9 +1260,7 @@ GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from:
                   S0082 (early) human cell to S0084(midpoint) human cells
                   S0084(midpoint) human cells to S0093 (late) human cells
                   S0082(early) human cells to S0093(late) human cells
-
 ### Run DE for KEGG
-
 ```{r}
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 #we want all of the item in the same space, do combine and run process seurat
@@ -1345,36 +1291,26 @@ marker_table <-
 markers_list <- list()
 gsea_gene_lists <- list()
 #FindMarkers since we comaring across only two groups
-for (i in 1:nrow(marker_table)) {
+gsea_lists <- parallel::mclapply(1:nrow(marker_table), function(i) {
     df <- FindMarkers(human_only,
-                      ident.1 = marker_table$item1[i],
-                      ident.2 = marker_table$item2[i],
-                      min.pct = 0.1,
-                      logfc.threshold = 0)
-    df$gene <- rownames(df)
-    gsea_list <- df %>%
-        arrange(desc(avg_log2FC)) %>%
-        dplyr::select(gene, avg_log2FC)
-    gsea_list <- deframe(gsea_list)
-    filename1 <- paste0(marker_table$item1[i],
-                        "_",
-                        marker_table$item2[i],
-                        ".tsv")
-    filename2 <- paste0(marker_table$item1[i],
-                        "_vs_",
-                        marker_table$item2[i],
-                        ".tsv")
+        ident.1 = marker_table$item1[i],
+        ident.2 = marker_table$item2[i],
+        min.pct = 0.1,
+        logfc.threshold = 0)
+    filename1 <- paste0("output/de/",
+        marker_table$item1[i],
+        "_",
+        marker_table$item2[i],
+        ".tsv")
     write_tsv(as.data.frame(df), file = filename1)
-    write_tsv(as.data.frame(gsea_list), file = filename2)
-    markers_list[[paste0(marker_table$item1[i],
-                         "_",
-                         marker_table$item2[i])]] <- df
-    gsea_gene_lists[[paste0(marker_table$item1[i],
-                     "_vs_",
-                     marker_table$item2[i])]] <- gsea_list
-}
-qs::qsave(markers_list, file = "output/rdata/markers_list.qs")
-qs::qsave(gsea_gene_lists, file = "output/rdata/gsea_gene_lists.qs")
+    return(df)
+}, mc.cores = 5)
+
+names(gsea_lists) <- paste0(marker_table$item1,
+                            "_vs_",
+                            marker_table$item2)
+
+qs::qsave(gsea_lists, file = "output/rdata/gsea_gene_lists.qs")
 ```
 
 ### Running the GSEA_KEGG for each pathway category
@@ -1393,72 +1329,83 @@ for (i in seq_len(nrow(category_tibble))) {
                          split(x = .$gene_symbol, f = .$gs_name)
 
     #Run the GSEA in loop for all the things
-    kegg_results_list <- list()
-    top5up_down <- list()
-    for (comparison in names(gsea_gene_lists)) {
-        message(comparison)
-        result <-
-            fgsea::fgseaMultilevel(kegg_ref,
-                                   gsea_gene_lists[[comparison]],
-                                   minSize = 15,      # min size of gene set to test
-                                   maxSize = 500,     # max size of a gene set to test
-                                   nPerm = 1000) %>%  # number of permutations to test
-                arrange(padj, desc(NES)) %>%
+    kegg_results_list <- parallel::mclapply (names(gsea_lists), function(item) {
+        message(item)
+
+        df$gene <- rownames(df)
+
+        gsea_input <-gsea_lists[[item]] %>%
+            arrange(desc(avg_log2FC)) %>%
+            dplyr::select(gene, avg_log2FC)
+
+        result <- fgsea::fgseaMultilevel(kegg_ref,
+                                gsea_input,
+                                minSize = 15,      # min size of gene set to test
+                                maxSize = 500,     # max size of a gene set to test
+                                nPerm = 1000) %>%  # number of permutations to test
+             arrange(padj, desc(NES)) %>%
                 mutate(pathway,
                        str_replace_all(pathway, "_", " ") %>%
                        str_remove("KEGG") %>%
                        str_to_sentence())
+        filename <- paste0(markers_list[item], ".tsv")
+        write_tsv(as.data.frame(result), file = filename)
+        return(result)
+    }, mc.cores = 5)
 
-        top5up <- result %>% slice_head(n = 5)
-        top5down <- result %>% slice_tail(n = 5)
-        temp_top5 <- rbind(top5up, top5down)
-        top5up_down[[comparison]] <-
-            temp_top5 %>%
-            dplyr::select(pathway, NES)
-        write_tsv(as.data.frame(result),
-                  file = paste0(markers_list[comparison],
-                                "_",
-                                comparison,
-                                ".tsv"))
-        kegg_results_list[[comparison]] <- result
-    }
+names(kegg_results_list) <- names(gsea_gene_lists)
 
-    #Visualize the top 5 up and downregulated pathways
-    primary_vs_early <-
-        top5up_down$Primary_tumor_vs_Early_metastatic_tumor
-    early_vs_midpoint <-
-        top5up_down$Early_metastatic_tumor_vs_Midpoint_metastatic_tumor
-
-
-    #prepare the dataframe for the plot
-    df <- data.frame(
-        label_y = c(1, 1, 1, 1, 1, -1, -1, -1, -1, -1),
-        order = c(1, 2, 3, 4, 5, 5, 4, 3, 2, 1))
-
-    #Practice in one of them
-    primary_vs_early <- cbind(primary_vs_early, df)
-
-    df$tissue <- "Primary vs Early Geneset"
-
-    #prepare the label for the plot
-    lab4plot <- tibble(y = c(-4, 4),
-                    x = c(0.5, 0.5),
-                    label = as.factor(c("Upregulated in Primary Tumor",
-                                        "Upregulated in Early Metastatic Tumor")),
-                    levels = c("Primary vs Early Geneset"))
-    # make bubble plot
-    bubble <- ggplot(top5up_down$Primary_tumor_vs_Early_metastatic_tumor,
-                    aes(x = NES,
-                        y = pathway,
-                        size = size,
-                        color = padj)) +
-                    geom_point() +
-                    scale_color_gradient2(high = "#ff0000",
-                        mid = "#ffffff",
-                        low = "#3942c0",
-                        midpoint = 0.05)
+top5up_down <- list()
+for(item in names(gsea_gene_lists)) {
+    top5up <- kegg_results_list[[item]] %>% slice_head(n = 5)
+    top5down <- kegg_results_list[[item]] %>% slice_tail(n = 5)
+    temp_top5 <- rbind(top5up, top5down)
+    top5up_down[[item]] <- temp_top5 %>%
+                             dplyr::select(pathway, NES)
+    write_tsv(as.data.frame(result),
+              file = paste0(markers_list[comparison],
+                            "_",
+                            comparison,
+                            ".tsv"))
 }
 
+
+
+#Visualize the top 5 up and downregulated pathways
+primary_vs_early <-
+    top5up_down$Primary_tumor_vs_Early_metastatic_tumor
+early_vs_midpoint <-
+    top5up_down$Early_metastatic_tumor_vs_Midpoint_metastatic_tumor
+    
+#Replace the "_" with space
+primary_vs_early$pathway <-
+    stringr::str_replace_all(primary_vs_early$pathway, "_", " ")
+
+#Remove KEGG word
+primary_vs_early$pathway <-
+    stringr::str_replace_all(primary_vs_early$pathway, "KEGG", "")
+
+#Pass the Pathways name as Sentence
+primary_vs_early$pathway <-
+    stringr::str_to_sentence(primary_vs_early$pathway)
+
+#prepare the dataframe for the plot
+df <- data.frame(
+    label_y = c(1, 1, 1, 1, 1, -1, -1, -1, -1, -1),
+    order = c(1, 2, 3, 4, 5, 5, 4, 3, 2, 1))
+
+#Practice in one of them
+primary_vs_early <- cbind(primary_vs_early, df)
+
+df$tissue = "Primary vs Early Geneset"
+
+
+#prepare the label for the plot
+lab4plot <- tibble(y = c(-4, 4),
+                   x = c(0.5, 0.5),
+                   label = as.factor(c("Upregulated in Primary Tumor",
+                                      "Upregulated in Early Metastatic Tumor")),
+                   levels = c("Primary vs Early Geneset"))
 
 ```
 
@@ -1581,6 +1528,18 @@ dev.off()
 
 save(figure_2c, file = "Figures/figure_2c.pdf.RData")
 
+# make bubble plot
+bubble <- ggplot(top5up_down$Primary_tumor_vs_Early_metastatic_tumor,
+                aes(x = NES,
+                    y = pathway,
+                    size = size,
+                    color = padj)) +
+                geom_point() +
+                scale_color_gradient2(high = "#ff0000",
+                    mid = "#ffffff",
+                    low = "#3942c0",
+                    midpoint = 0.05)
+bubble
 ```
 
 
@@ -1629,8 +1588,10 @@ sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
 ligand_target_matrix <-
     readRDS( "nichenetrfiles/ligand_target_matrix.rds")
 
+# Use a strict definition of the network
 lr_network <-
-    readRDS("nichenetrfiles/lr_network.rds")
+    readRDS("nichenetrfiles/lr_network.rds") %>%
+    filter(database != "ppi_prediction_go" & database != "ppi_prediction")
 
 weighted_networks <-
     readRDS("nichenetrfiles/weighted_networks.rds")
@@ -1639,8 +1600,6 @@ weighted_networks_lr <-
     weighted_networks$lr_sig %>%
     inner_join(lr_network %>% distinct(from, to),
                by = c("from", "to"))
-
-
 ```
 
 
@@ -1677,8 +1636,6 @@ weighted_networks_lr <-
     mutate(from = convert_human_to_mouse_symbols(from),
            to = convert_human_to_mouse_symbols(to)) %>%
     drop_na()
-
-
 ```
 
 ## Nichenetr Analysis
@@ -1755,6 +1712,5 @@ complex_heatmap
 ```{r, cache=FALSE}
 sessionInfo()
 ```
-
 
 
