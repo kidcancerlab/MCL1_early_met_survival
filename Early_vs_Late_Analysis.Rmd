@@ -390,7 +390,7 @@ dev.off()
 
 ## Human Cells Only: Post-cell cycle regression
 
-Regress out cell cycle genes so that the dataset does not cluster on the UMAP 
+Regress out cell cycle genes so that the dataset does not cluster on the UMAP
 by cell cycle gene expression.
 
 ```{r cc, dependson=c("load","human-processing")}
@@ -1167,12 +1167,12 @@ downsample_umap_mouse_only <-
 downsample_mouse_combined <- DimPlot(downsample_umap_mouse_only) +
                         theme_roberts() +
                         labs(title = "Mouse control and stroma") +
-                        theme(plot.title = element_text(hjust = 0.5)) + 
+                        theme(plot.title = element_text(hjust = 0.5)) +
                         coord_fixed()
 downsample_mouse_combined
 
 #split by
-downsample_mouse_split <- 
+downsample_mouse_split <-
             DimPlot(downsample_umap_mouse_only, split.by = "group") +
             theme_roberts() +
             theme(plot.title = element_text(hjust = 0.5)) +
@@ -1181,7 +1181,7 @@ downsample_mouse_split
 
 
 #rearrange the panels for umap space
-downsample_mouse_split$data$group <- 
+downsample_mouse_split$data$group <-
     factor(x = downsample_mouse_split$data$group,
            levels = c("Mouse_control_lung",
                       "Early_mouse_stroma",
@@ -1241,7 +1241,7 @@ umap_human_only <-
     process_seurat()
 
 #Human only combined umap: this puts them in the same space/comparable
-combined_human_only <- 
+combined_human_only <-
     DimPlot(umap_human_only) +
     ggtitle(label = "Primary and metastatic tumor") +
     theme_roberts() +
@@ -1283,13 +1283,13 @@ umap_mouse_only <-
 mouse_umaps_combined <- DimPlot(umap_mouse_only) +
                         theme_roberts() +
                         theme(plot.title = element_text(hjust = 0.5)) +
-                        NoLegend() + 
+                        NoLegend() +
                         coord_fixed()
 
 mouse_umaps <- DimPlot(umap_mouse_only, split.by = "group") +
                theme_roberts() +
                theme(plot.title = element_text(hjust = 0.5)) +
-               NoLegend() + 
+               NoLegend() +
                coord_fixed()
 
 mouse_umaps
@@ -1308,7 +1308,7 @@ combined_human_only
 combined_plots <- (human_umaps / mouse_umaps)
 combined_plots
 
-combined_plots_all <- (combined_human_only + (human_umaps / mouse_umaps)) 
+combined_plots_all <- (combined_human_only + (human_umaps / mouse_umaps))
                          + plot_layout(widths = c(1, 4))
 combined_plots_all
 
@@ -1334,11 +1334,11 @@ ggsave("output/figures/combined_plots_all.pdf",
 
 
 ## GSEA_KEGG
-GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from: 
-                  S0037 (primary) redo human cells to S0082(early) human cells 
-                  S0082 (early) human cell to S0084(midpoint) human cells 
-                  S0084(midpoint) human cells to S0093 (late) human cells 
-                  S0082(early) human cells to S0093(late) human cells 
+GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from:
+                  S0037 (primary) redo human cells to S0082(early) human cells
+                  S0082 (early) human cell to S0084(midpoint) human cells
+                  S0084(midpoint) human cells to S0093 (late) human cells
+                  S0082(early) human cells to S0093(late) human cells
 ```{r}
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 #we want all of the item in the same space, do combine and run process seurat
@@ -1374,8 +1374,8 @@ for (i in 1:nrow(marker_table)) {
                          ident.2 = marker_table$item2[i],
                          min.pct = 0.1,
                          logfc.threshold = 0)
-        df$gene <- rownames(df) 
-        gsea_list <- df %>% 
+        df$gene <- rownames(df)
+        gsea_list <- df %>%
               arrange(desc(avg_log2FC)) %>%
               dplyr::select(gene, avg_log2FC)
         gsea_list <- deframe(gsea_list)
@@ -1422,7 +1422,7 @@ for (item in names(gsea_gene_lists)) {
     top5up <- result %>% slice_head(n = 5)
     top5down <- result %>% slice_tail(n = 5)
     temp_top5 <- rbind(top5up, top5down)
-    top5up_down[[item]] <- temp_top5 %>% 
+    top5up_down[[item]] <- temp_top5 %>%
                              dplyr::select(pathway, NES)
     filename <- paste0(markers_list[item],".tsv")
     write_tsv(as.data.frame(result), file = filename)
@@ -1462,7 +1462,7 @@ primary_vs_early$pathway <-
 primary_vs_early$pathway <-
     stringr::str_to_sentence(primary_vs_early$pathway)
 
-#prepare the dataframe for the plot 
+#prepare the dataframe for the plot
 df <- data.frame(
     label_y = c(1, 1, 1, 1, 1, -1, -1, -1, -1, -1),
     order = c(1, 2, 3, 4, 5, 5, 4, 3, 2, 1))
@@ -1619,13 +1619,13 @@ bubble
 
 # Nichenetr
 sender : all stroma/mouse cells from the early+mid
-receiver : Human cells/tumor from the early+mid 
+receiver : Human cells/tumor from the early+mid
 Genes/markers tested : differential expression from ident1=early and ident2=mid
-```{r}  
+```{r}
 load("output/rdata/sobj_list.rds")
 
 #seurat object: sender of signal
-sender_sobj <- 
+sender_sobj <-
     merge(sobj_list[["d14_pos_m"]],
           y = sobj_list[c("d28_pos_m")],
           add.cell.ids = c("Early_mouse_stroma",
@@ -1634,7 +1634,7 @@ sender_sobj <-
             process_seurat()
 
 #seurat object: receiver of signal
-receiver_sobj <- 
+receiver_sobj <-
     merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[c("d28_pos_h")],
           add.cell.ids = c("Early_metastatic_tumor",
@@ -1644,7 +1644,7 @@ receiver_sobj <-
 
 # combine all of the objects
 sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h", 
+          y = sobj_list[c("d28_pos_h",
                           "d14_pos_m",
                           "d28_pos_m")],
           add.cell.ids = c("receiver",
@@ -1663,7 +1663,8 @@ ligand_target_matrix <-
 
 # Use a strict definition of the network
 lr_network <-
-    readRDS("nichenetrfiles/lr_network.rds")
+    readRDS("nichenetrfiles/lr_network.rds") %>%
+    filter(database != "ppi_prediction_go" & database != "ppi_prediction")
 
 weighted_networks <-
     readRDS("nichenetrfiles/weighted_networks.rds")
@@ -1672,8 +1673,6 @@ weighted_networks_lr <-
     weighted_networks$lr_sig %>%
     inner_join(lr_network %>% distinct(from, to),
                by = c("from", "to"))
-
-
 ```
 
 
@@ -1710,8 +1709,6 @@ weighted_networks_lr <-
     mutate(from = convert_human_to_mouse_symbols(from),
            to = convert_human_to_mouse_symbols(to)) %>%
     drop_na()
-
-
 ```
 
 ## Nichenetr Analysis
@@ -1720,7 +1717,7 @@ sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 combined_data <- qs::qread("output/rdata/combined_data.qs")
 
 #seurat objects sender of signal
-sender_sobj <- 
+sender_sobj <-
     merge(sobj_list[["d14_pos_m"]],
           y = sobj_list[c("d28_pos_m")],
           add.cell.ids = c("Early_mouse_stroma",
@@ -1729,7 +1726,7 @@ sender_sobj <-
             process_seurat()
 
 #seurat objects receiver of signal
-receiver_sobj <- 
+receiver_sobj <-
     merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[c("d28_pos_h")],
           add.cell.ids = c("Early_metastatic_tumor",
@@ -1739,7 +1736,7 @@ receiver_sobj <-
 
 #The combined object for both sender and receiver
 sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h", 
+          y = sobj_list[c("d28_pos_h",
                           "d14_pos_m",
                           "d28_pos_m")],
           add.cell.ids = c("Early_metastatic_tumor",
@@ -1755,7 +1752,7 @@ Idents(receiver_sobj) <- "group"
 Idents(sender_receiver_sobj) <- "group"
 
 #Gives the list of target genes from the receiver dataset
-gset_stuff <- find_tar_genes(receiver_sobj, 
+gset_stuff <- find_tar_genes(receiver_sobj,
                             id1 = "Early_metastatic_tumor",
                             id2 = "Midpoint_metastatic_tumor",
                             pval = 0.05,
@@ -1768,9 +1765,9 @@ rrrSingleCellUtils:::gen_lig_receptor_ref()
 # Finds the ligands and genes target relationship in the sender and receiver: basically runs the nichenetr analysis
 fl_object <- find_ligands(sender_receiver_sobj,                    #sender seurat object
                         gset = gset_stuff,                         #genes list form the receiver
-                        receiver = unique(Idents(receiver_sobj)),  
+                        receiver = unique(Idents(receiver_sobj)),
                         senders = unique(Idents(sender_sobj)),
-                        gset_spec = "human",                   
+                        gset_spec = "human",
                         rec_spec = "human",
                         send_spec = "mouse")
 
@@ -1789,8 +1786,4 @@ complex_heatmap
 sessionInfo()
 ```
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 499d570c1d7def9aa854ee63f09ca6529dc104e1
 
