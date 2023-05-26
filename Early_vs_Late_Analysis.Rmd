@@ -676,6 +676,7 @@ qs::qsave(combined_data,
 
 ### Run DE on the mouse samples
 ```{r deGrowthFactorMetsDE, dependson='deGrowthFactorMets'}
+combined_data <- qs::qread("output/rdata/combined_data.qs")
 Idents(combined_data) <- combined_data$group_name
 
 overall_de <-
@@ -686,41 +687,40 @@ overall_de <-
 
 ### Plot cell types of mouse cells
 ```{r mouse_ref_labels}
-set.seed(1337)
-celltype_mouse_plot <-
-    DimPlot(combined_data,
-            group.by = "cell_type_final",
-            split.by = "group",
-            label = TRUE,
-            repel = TRUE) +#,
-    #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
-        NoLegend()
+# set.seed(1337)
+# celltype_mouse_plot <-
+#     DimPlot(combined_data,
+#             group.by = "cell_type_final",
+#             split.by = "group",
+#             label = TRUE,
+#             repel = TRUE) +#,
+#     #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
+#         NoLegend()
 
-celltype_mouse_plot_all <-
-    DimPlot(combined_data,
-            group.by = "cell_type_final",
-            label = TRUE,
-            repel = TRUE) +#,
-    #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
-        NoLegend()
+# celltype_mouse_plot_all <-
+#     DimPlot(combined_data,
+#             group.by = "cell_type_final",
+#             label = TRUE,
+#             repel = TRUE) +#,
+#     #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
+#         NoLegend()
 
-two_plots <-
-    wrap_plots(celltype_mouse_plot_all,
-               celltype_mouse_plot,
-               ncol = 2,
-               widths = c(1, 4))
+# two_plots <-
+#     wrap_plots(celltype_mouse_plot_all,
+#                celltype_mouse_plot,
+#                ncol = 2,
+#                widths = c(1, 4))
 
-ggsave("output/figures/mouse_umaps_celltype_2.pdf",
-       width = 20,
-       height = 8,
-       plot = two_plots)
+# ggsave("output/figures/mouse_umaps_celltype_2.pdf",
+#        width = 20,
+#        height = 8,
+#        plot = two_plots)
 ```
 
 ### Count cell types
 ```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
-
 cell_type_list <-
-    table(combined_data$cell_type, combined_data$group) %>%
+    table(combined_data$cell_type_final, combined_data$group) %>%
     as.data.frame() %>%
     group_by(Var1) %>%
     summarize(sum = sum(Freq), .groups = "drop") %>%
@@ -748,13 +748,13 @@ target_genes <-
 target_genes <-
     left_join(target_genes,
               overall_de %>%
-              rownames_to_column("mouse_gene"))
+                rownames_to_column("mouse_gene"))
 
 ################################################################################
 # DE between lung and primary mets by cell type
 combined_subset <-
     combined_data %>%
-    subset(cell_type %in% cell_type_list$Var1)
+    subset(cell_type_final %in% cell_type_list$Var1)
 
 combined_subset <-
     combined_subset[rownames(combined_subset) %in% target_genes$mouse_gene, ]
@@ -764,18 +764,20 @@ Idents(combined_subset) <- combined_subset$group_name
 qs::qsave(combined_subset,
           file = "output/rdata/combined_subset.qs")
 
-table(combined_subset$cell_type, combined_subset$group_name) %>%
+table(combined_subset$cell_type_final, combined_subset$group_name) %>%
     as.data.frame() %>%
     pivot_wider(names_from = Var2,
-                values_from = Freq) %>%
-    gt::gt()
+                values_from = Freq)# %>%
+    # gt::gt() %>%
+    # gt::gtsave(filename = "output/figures/cell_type_table.pdf")
+    ########### Clean this up
 
 cell_type_de <- tibble(gene = character())
 
-for (cell_type in unique(combined_subset$cell_type)) {
+for (cell_type in unique(combined_subset$cell_type_final)) {
     cell_type_de <-
         subset(combined_subset,
-               subset = cell_type == {{ cell_type }}) %>%
+               subset = cell_type_final == {{ cell_type }}) %>%
         FindMarkers(ident.1 = "Control lung",
                     logfc.threshold = 0,
                     min.pct = 0) %>%
@@ -783,6 +785,7 @@ for (cell_type in unique(combined_subset$cell_type)) {
         rownames_to_column("gene") %>%
         mutate(cell_type = cell_type) %>%
         select(gene, avg_log2FC, p_val_adj, cell_type) %>%
+        arrange(p_val_adj) %>%
         bind_rows(cell_type_de)
 }
 
@@ -798,81 +801,66 @@ for (factor_name in c("group_name", "sample_description")) {
         t() %>%
         as.data.frame() %>%
         select(target_genes$mouse_gene[target_genes$mouse_gene %in%
-                                    rownames(combined_subset)]) %>%
+                                          rownames(combined_subset)]) %>%
         rownames_to_column("cell") %>%
-        mutate(cell_type = combined_subset$cell_type,
-            group_name = combined_subset$group_name,
-            sample_description = combined_subset$sample_description) %>%
-        pivot_longer(cols = c(-group_name,
+        mutate(cell_type = combined_subset$cell_type_final,
+               group_col = combined_subset[[factor_name]] %>% pull()) %>%
+        pivot_longer(cols = c(-group_col,
                              -cell_type,
-                             -sample_description,
                              -cell),
                      names_to = "gene",
-                     values_to = "expression") %>% 
-        group_by(cell_type, group_name, gene) %>%
-        summarize(expression = mean(expression),
+                     values_to = "expression") %>%
+        group_by(cell_type, group_col, gene) %>%
+        summarize(expr_mean = mean(expression),
                   pct_expr = sum(expression > 0) / n(),
                   .groups = "drop") %>%
-        mutate(gene_group = paste(gene, group_name, sep = "\n"))
+        mutate(gene_group = paste(gene, group_col, sep = "\n"))
 
-    ggplot(temp_data,
-           aes(x = group_name,
+    plot_name <-
+        ggplot(temp_data,
+           aes(x = group_col,
                y = cell_type,
-               group = group_name,
+               group = group_col,
                color = expression,
                size = pct_expr)) +
-        geom_point(position = position_dodge(0.5)) +
+        geom_point() +
         facet_wrap(~ gene, nrow = 1) +
         theme_roberts() +
         scale_color_gradient(low = "white",
                              high = "darkred") +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-        scale_y_discrete(limits = rev)
-
-
-
-    plot_name <-
-        ggplot(temp_data,
-               aes(x = gene,
-                   y = expression,
-                   color = get(factor_name))) +
-        geom_point(size = 0.1,
-                   alpha = 0.5,
-                   position = position_jitterdodge()) +
-        facet_wrap(~ cell_type, ncol = 1, scales = "free_y") +
-        theme_roberts() +
+        theme(axis.text.x = element_text(angle = 90,
+                                         hjust = 1,
+                                         vjust = 0.5)) +
+        scale_y_discrete(limits = rev) +
         labs(x = "",
-             y = "Expression",
+             y = "",
              title = paste0("Gene Expression Split by ",
                             str_replace(factor_name, "_", " ") %>%
                                 str_to_title(),
-                            " and Cell Type")) +
-        theme(legend.position = "right",
-              legend.title = element_blank()) +
-        guides(color = guide_legend(override.aes = list(size = 2, alpha = 1)))
+                            " and Cell Type"))
 
-    ggsave(paste0("output/figures/jitter_cell_type_by_",
+    ggsave(paste0("output/figures/dotplot_cell_type_by_",
                   factor_name,
                   ".pdf"),
            plot = plot_name,
-           width = 10,
+           width = 15,
            height = 8)
 
     plot_name <-
         temp_data %>%
-        group_by(across(all_of(factor_name)),
+        group_by(group_col,
                  cell_type,
                  gene) %>%
         summarize(prop_express = sum(expression > 0) / n(),
                   num_cells = n(),
                   .groups = "drop") %>%
         left_join(cell_type_de) %>%
-        mutate(group = paste0(get(factor_name),
-                            " (n=",
-                            num_cells,
-                            ")"),
-            p_val_adj = replace_na(p_val_adj, 1),
-            sig = ifelse(p_val_adj <= 0.05,
+        mutate(group = paste0(group_col,
+                              " (n=",
+                              num_cells,
+                              ")"),
+               p_val_adj = replace_na(p_val_adj, 1),
+               sig = ifelse(p_val_adj <= 0.05,
                             "Significant",
                             "Non-significant")) %>%
         ggplot(aes(x = group,
@@ -908,11 +896,8 @@ for (factor_name in c("group_name", "sample_description")) {
 }
 ```
 
-Add primary: S0131
-
-
-I'd like the following cell types to be in the main figure: dendritic cells, fibroblasts, macrophages, and monocytes And the following genes: AREG, EREG, FGF2, FGF10, FGF18, HBEGF, HGF, IFG1, NRG1, PDGFa, PDGFb, PDGFc, TGFa, TGFb1, and VEGFa
 ## Make main figures for growth factors
+I'd like the following cell types to be in the main figure: dendritic cells, fibroblasts, macrophages, and monocytes And the following genes: AREG, EREG, FGF2, FGF10, FGF18, HBEGF, HGF, IFG1, NRG1, PDGFa, PDGFb, PDGFc, TGFa, TGFb1, and VEGFa
 ```{r main_figs, dependson='deGrowthFactorMets'}
 combined_subset <- qs::qread("output/rdata/combined_subset.qs")
 
@@ -924,14 +909,14 @@ main_figure_genes <-
       "Pdgfa", "Pdgfb", "Pdgfc", "Tgfa", "Tgfb1", "Vegfa")
 
 main_figure_cell_types <-
-    c("Dendritic cells", "Fibroblasts", "Macrophages", "Monocytes")
+    c("Dendritic", "Fibroblast", "Alveolar Mac", "Monocyte", "Epithelial")
 
 main_jitter_cell_types <-
-    c("Macrophages", "Monocytes")
+    c("Alveolar Mac", "Monocyte", "TAM", "Fibroblast", "Epithelial")
 
 combined_subset_main <-
-    combined_subset %>%
-    subset(cell_type %in% main_figure_cell_types)
+    subset(combined_subset,
+           subset = cell_type_final %in% main_figure_cell_types)
 
 combined_subset_main <-
     combined_subset_main[main_figure_genes, ]
@@ -945,38 +930,43 @@ for (factor_name in c("group_name", "sample_description")) {
         t() %>%
         as.data.frame() %>%
         rownames_to_column("cell") %>%
-        mutate(cell_type = combined_subset_main$cell_type,
-               group_name = combined_subset_main$group_name,
-               sample_description = combined_subset_main$sample_description) %>%
-        pivot_longer(cols = c(-group_name,
+        mutate(cell_type = combined_subset_main$cell_type_final,
+               group_col = combined_subset_main[[factor_name]] %>% pull()) %>%
+        pivot_longer(cols = c(-group_col,
                               -cell_type,
-                              -sample_description,
                               -cell),
                      names_to = "gene",
-                     values_to = "expression")
+                     values_to = "expression") %>%
+        filter(cell_type %in% main_jitter_cell_types) %>%
+        group_by(cell_type, group_col, gene) %>%
+        summarize(expr_mean = mean(expression),
+                  pct_expr = sum(expression > 0) / n(),
+                  num_cells = n(),
+                  .groups = "drop") %>%
+        mutate(gene_group = paste(gene, group_col, sep = "\n"))
 
     plot_name <-
-        temp_data %>%
-        filter(cell_type %in% main_jitter_cell_types) %>%
-        ggplot(aes(x = gene,
-                   y = expression,
-                   color = get(factor_name))) +
-        geom_point(size = 0.1,
-                   alpha = 0.5,
-                   position = position_jitterdodge()) +
-        facet_wrap(~ cell_type, ncol = 1, scales = "free_y") +
+        ggplot(temp_data,
+           aes(x = group_col,
+               y = cell_type,
+#               group = group_name,
+               color = expr_mean,
+               size = pct_expr)) +
+        geom_point(position = position_dodge(0.5)) +
+        facet_wrap(~ gene, nrow = 1) +
         theme_roberts() +
+        scale_color_gradient(low = "white",
+                             high = "darkred") +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        scale_y_discrete(limits = rev) +
         labs(x = "",
              y = "Expression",
              title = paste0("Gene Expression Split by ",
                             str_replace(factor_name, "_", " ") %>%
                                 str_to_title(),
-                            " and Cell Type")) +
-        theme(legend.position = "right",
-              legend.title = element_blank()) +
-        guides(color = guide_legend(override.aes = list(size = 2, alpha = 1)))
+                            " and Cell Type"))
 
-    ggsave(paste0("output/figures/jitter_cell_type_by_",
+    ggsave(paste0("output/figures/dotplot_cell_type_by_",
                   factor_name,
                   "_main.pdf"),
            plot = plot_name,
@@ -985,14 +975,14 @@ for (factor_name in c("group_name", "sample_description")) {
 
     plot_name <-
         temp_data %>%
-        group_by(across(all_of(factor_name)),
+        group_by(group_col,
                  cell_type,
                  gene) %>%
-        summarize(prop_express = sum(expression > 0) / n(),
+        summarize(prop_express = sum(expr_mean > 0) / n(),
                   num_cells = n(),
                   .groups = "drop") %>%
         left_join(cell_type_de) %>%
-        mutate(group = paste0(get(factor_name),
+        mutate(group = paste0(group_col,
                             " (n=",
                             num_cells,
                             ")"),
