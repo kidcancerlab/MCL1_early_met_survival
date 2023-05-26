@@ -1055,7 +1055,7 @@ for (factor_name in c("group_name", "sample_description")) {
 ## Human Down Sampling for human
 ```{r}
 #load the sobj
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 #subset human only
 human_objects_list <- sobj_list[c("tibia_tumor_h",
                                 "d14_pos_h",
@@ -1810,6 +1810,120 @@ ggsave("output/figures/complex_heatmap.pdf",
 dev.off()
 
 ```
+
+
+## Nichenet with primary
+```{r}
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+combined_data <- qs::qread("output/rdata/combined_data.qs")
+
+#seurat objects sender of signal, subset form the combined_data with cell annotation
+sender_sobj <- subset(combined_data, 
+                      obj_name == c("d14_pos_m", "d28_pos_m")) %>%
+               process_seurat()                      
+
+#visualize what cell types are there in sender
+DimPlot(sender_sobj, group.by = "cell_type_final") 
+
+# Combined mid and late tumor and label it established 
+
+#seurat objects receiver of signal
+established_tumor_sobj <- 
+    merge(sobj_list[["d14_pos_h"]],
+          y = sobj_list[c("d28_pos_h",
+                          "d49_pos_h")],
+          add.cell.ids = c("Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor",
+                           "Late_metastatic_tumor"),
+          project      =   "established_tumor_sobj") %>%
+    process_seurat()
+
+established_tumor_sobj$cell_type_final <- "Established_metastatic_tumor"
+Idents(established_tumor_sobj) <- established_tumor_sobj$cell_type_final
+
+sobj_list$tibia_tumor_h$cell_type_final <- "Primary_tumor"
+Idents(sobj_list$tibia_tumor_h) <- sobj_list$tibia_tumor_h$cell_type_final
+
+#find the target differentially expressed genes between the primary vs mets
+Target_genes_obj <- merge(sobj_list$tibia_tumor_h, 
+                              y = established_tumor_sobj,
+                              add.cell.ids = c ("Primary_tumor",
+                                                "Established_metastatic_tumor"),
+                              project      = "Target_genes_obj") %>%
+                        process_seurat()
+
+Idents(Target_genes_obj) <- Target_genes_obj$cell_type_final
+
+#Gives the list of target genes from the receiver dataset
+gset_stuff <- find_tar_genes(Target_genes_obj, 
+                            id1 = "Primary_tumor",
+                            id2 = "Established_metastatic_tumor",
+                            pval = 0.05,
+                            logfc = 0.25,
+                            spec = "human")
+
+#insert the cell_type_final column to be consistent with the idents
+Idents(Target_genes_obj) <- Target_genes_obj$cell_type_final
+
+Target_genes_obj$cell_type_final <- 
+    stringr::str_replace_all(Target_genes_obj$cell_type_final, "_", " ")
+
+#The combined object for both sender and receiver
+sender_receiver_sobj <- merge(sender_sobj, 
+                              y = Target_genes_obj,
+                              add.cell.ids = c ("sender_sobj",
+                                                "Target_genes_obj"),
+                              project      = "sender_receiver_sobj") %>%
+                        process_seurat()
+
+Idents(sender_receiver_sobj) <- sender_receiver_sobj$cell_type_final
+
+#set the same idents for all the objects
+Idents(sender_sobj) <- sender_sobj$cell_type_final
+Idents(Target_genes_obj) <- established_tumor_sobj$cell_type_final
+Idents(sender_receiver_sobj) <- sender_receiver_sobj$cell_type_final
+
+pdf("junk.pdf")
+# Finds the ligands and genes target relationship in the sender and receiver: basically runs the nichenetr analysis
+fl_object <-
+    find_ligands(sender_receiver_sobj,                    #sender seurat object
+                 gset = gset_stuff,                         #genes list form the receiver
+                 receiver = unique(Idents(Target_genes_obj)),
+                 senders = c("Dendritic",
+                             "Fibroblast",
+                             "TAM",
+                             "Alveolar Mac",
+                             "TIM",
+                             "NK",
+                             "Monocyte",
+                             "Interstitial Mac",
+                             "Mesothelial"),
+                 gset_spec = "human",
+                 rec_spec = "human",
+                 send_spec = "mouse",
+                 stringency = "strict",
+                 d_plot = TRUE,
+                 lt_vis = TRUE,
+                 lr_vis = TRUE)
+
+dev.off()
+#makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
+complex_heatmap_privsmets <- plot_complex_heatmap(fl_object,
+                                        grid_color_low = "gray95",
+                                        grid_color_high = "midnightblue",
+                                        point_color_low = "white",
+                                        point_color_high = "darkred")
+
+complex_heatmap_privsmets
+
+ggsave("output/figures/complex_heatmap_privsmets.pdf",
+       width = 12,
+       height = 6,
+       plot = complex_heatmap_privsmets)
+```
+
+
+
 
 ```{r, cache=FALSE}
 sessionInfo()
