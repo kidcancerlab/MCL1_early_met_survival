@@ -118,6 +118,8 @@ Datasets are from tumors collected from mouse lungs at early (day 14 post inject
 sample_list <- read_tsv("misc/sample_cutoffs.txt", show_col_types = FALSE)
 
 sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
+    message(paste("Starting sample", i))
+
     species_pattern <- sample_list$species_pattern[i]
     obj_name <- sample_list$obj_name[i]
 
@@ -168,6 +170,7 @@ sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
             annot_cells(sobj)
     }
 
+    message(paste("Sample", i, "completed"))
     return(sobj)
 }, mc.cores = 5)
 
@@ -278,61 +281,6 @@ umap_group_split <-
 umap_group_split
 
 ```
-
-## Run DE on human cells for GSEA and IPA
-```{r human-de, dependson="load"}
-sobj_list <- qs::qread("output/rdata/sobj_list.qs")
-
-tumor_three_tp <-
-    merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h", "d49_pos_h", "tibia_tumor_h")],
-          add.cell.ids = c("d14", "d28", "d49", "tibia")) %>%
-    process_seurat(resolution = 0.15, run_umap_dims = 1:20)
-
-# Save human mCherry+ merged object
-qs::qsave(tumor, file = "output/rdata/d14_28_49_tumor.qs")
-```
-
-## Mouse Cell Only Processing
-Removing this chunk as it's not used anywhere
-```{r mouse-processing, dependson="load"}
-# Mouse
-# Merge day 14 and day 35 Seurat objects together
-# microenv <-
-#     merge(sobj_list[["d14_pos_m"]],
-#           y = sobj_list[c("d28_pos_m", "d49_pos_m", "S0006_mouse")],
-#           add.cell.ids = c("d14", "d28", "d49", "S0006"),
-#           project = "Early vs Late OS Mets")
-
-# # Process merged object
-# microenv <-
-#     NormalizeData(microenv) %>%
-#     ScaleData() %>%
-#     FindVariableFeatures() %>%
-#     RunPCA() %>%
-#     FindNeighbors(dims = 1:30) %>%
-#     FindClusters(resolution = 0.15, k.param = 30) %>%
-#     RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
-
-# # Plot UMAP
-# env_umap <- r_dim_plot(microenv,
-#         title = "Stroma at metastatic timepoints",
-#         label = TRUE)
-# env_umap
-
-# env_umap_split <- r_dim_plot(microenv,
-#         title = "Stroma at metastatic timepoints",
-#         split.by = "group")
-# env_umap_split
-
-# timepoints_panel <- (umap_group | umap_group_split) / (env_umap | env_umap_split)
-# timepoints_panel
-
-# # Save mouse mCherry+ merged Seurat object
-# save(microenv, file = "output/rdata/early_late_microenv.RData")
-```
-
-# Plotting Expression: Genes of Interest
 
 ## Human Cells Only: Pre-cell cycle regression
 ```{r human_geneplots, dependson=c("load","human-processing")}
@@ -739,22 +687,6 @@ harmonization <-
 
 ### Count cell types
 ```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
-# imm_cells <- celldex::ImmGenData()
-# mouse_rna <- celldex::MouseRNAseqData()
-
-# cell_assign <-
-#     SingleR::SingleR(as.SingleCellExperiment(combined_data),
-#                      ref = list(imm_cells,
-#                                 mouse_rna),
-#                      labels = list(imm_cells$label.main,
-#                                    mouse_rna$label.main))
-
-# combined_data$cell_type <-
-#     cell_assign$labels %>%
-#     str_replace("DC", "Dendritic cells")
-# combined_data$cell_score <-
-#     cell_assign$scores %>%
-#     apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
 combined_data$cell_type <-
     str_remove(combined_data$cell_type, " [12]$")
 
