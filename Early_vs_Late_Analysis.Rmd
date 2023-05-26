@@ -1300,36 +1300,24 @@ marker_table <- tribble(~item1, ~item2,
 markers_list <- list()
 gsea_gene_lists <- list()
 #FindMarkers since we comaring across only two groups
-for (i in 1:nrow(marker_table)) {
-        df <- FindMarkers(human_only,
-                         ident.1 = marker_table$item1[i],
-                         ident.2 = marker_table$item2[i],
-                         min.pct = 0.1,
-                         logfc.threshold = 0)
-        df$gene <- rownames(df)
-        gsea_list <- df %>%
-              arrange(desc(avg_log2FC)) %>%
-              dplyr::select(gene, avg_log2FC)
-        gsea_list <- deframe(gsea_list)
-        filename1 <- paste0(marker_table$item1[i],
-                            "_",
-                            marker_table$item2[i],
-                            ".tsv")
-        filename2 <- paste0(marker_table$item1[i],
-                            "_vs_",
-                            marker_table$item2[i],
-                            ".tsv")
-        write_tsv(as.data.frame(df), file = filename1)
-        write_tsv(as.data.frame(gsea_list), file = filename2)
-        markers_list[[paste0(marker_table$item1[i],
-                            "_",
-                            marker_table$item2[i])]] <- df
-        gsea_gene_lists[[paste0(marker_table$item1[i],
-                            "_vs_",
-                            marker_table$item2[i])]] <- gsea_list
-}
+gsea_lists <- parallel::mclapply(1:nrow(marker_table), function(i) {
+    df <- FindMarkers(human_only,
+        ident.1 = marker_table$item1[i],
+        ident.2 = marker_table$item2[i],
+        min.pct = 0.1,
+        logfc.threshold = 0)
+    filename1 <- paste0("output/de/",
+        marker_table$item1[i],
+        "_",
+        marker_table$item2[i],
+        ".tsv")
+    write_tsv(as.data.frame(df), file = filename1)
+    return(df)
+}, mc.cores = 5)
 
-
+names(gsea_lists) <- paste0(marker_table$item1,
+                            "_vs_",
+                            marker_table$item2)
 
 # Running the GSEA_KEGG
 # select dataset and then aggregate the genes into a list
@@ -1338,12 +1326,18 @@ kegg_ref <- msigdbr::msigdbr(species = "Homo sapiens",
                 subcategory = "CP:KEGG") %>%
                 split(x = .$gene_symbol, f = .$gs_name)
 
-
 #Run the GSEA in loop for all the things
-kegg_results_list <- list()
-top5up_down <- list()
-for (item in names(gsea_gene_lists)) {
-    print(item)
+kegg_results_list <- parallel::mclapply (names(gsea_lists), function(item) {
+    message(item)
+
+    df$gene <- rownames(df)
+
+    gsea_input <-gsea_lists[[item]] %>%
+        arrange(desc(avg_log2FC)) %>%
+        dplyr::select(gene, avg_log2FC)
+
+
+
     result <- fgsea::fgseaMultilevel(kegg_ref,
                             gsea_gene_lists[[item]],
                             minSize = 15,      # min size of gene set to test
@@ -1351,15 +1345,22 @@ for (item in names(gsea_gene_lists)) {
                             nPerm = 1000) %>%  # number of permutations to test
                             arrange(padj)
     result <- result %>% arrange(desc(NES))
-    top5up <- result %>% slice_head(n = 5)
-    top5down <- result %>% slice_tail(n = 5)
+    filename <- paste0(markers_list[item], ".tsv")
+    write_tsv(as.data.frame(result), file = filename)
+    return(result)
+}, mc.cores = 5)
+
+names(kegg_results_list) <- names(gsea_gene_lists)
+
+top5up_down <- list()
+for(item in names(gsea_gene_lists)) {
+    top5up <- kegg_results_list[[item]] %>% slice_head(n = 5)
+    top5down <- kegg_results_list[[item]] %>% slice_tail(n = 5)
     temp_top5 <- rbind(top5up, top5down)
     top5up_down[[item]] <- temp_top5 %>%
                              dplyr::select(pathway, NES)
-    filename <- paste0(markers_list[item],".tsv")
-    write_tsv(as.data.frame(result), file = filename)
-    kegg_results_list[[item]] <- result
 }
+
 
 
 #Visualize the top 5 up and downregulated pathways
