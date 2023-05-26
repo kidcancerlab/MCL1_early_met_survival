@@ -975,7 +975,7 @@ for (factor_name in c("group_name", "sample_description")) {
 ## Human Down Sampling for human
 ```{r}
 #load the sobj
-load("output/rdata/sobj_list.rds")
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 #subset human only
 human_objects_list <- sobj_list[c("tibia_tumor_h",
                                 "d14_pos_h",
@@ -984,6 +984,7 @@ human_objects_list <- sobj_list[c("tibia_tumor_h",
 
 human_objects_list
 
+set.seed(3333)
 #Downsample
 for (i in seq_len(length(human_objects_list))) {
     temp_obj <- human_objects_list[[i]]
@@ -1043,8 +1044,8 @@ ggsave("output/figures/downsample_human_combined.pdf",
        plot = downsample_human_combined)
 
 ggsave("output/figures/downsample_human_split.pdf",
-       width = 6,
-       height = 6,
+       width = 12,
+       height = 4,
        plot = downsample_human_split)
 
 ```
@@ -1053,28 +1054,36 @@ ggsave("output/figures/downsample_human_split.pdf",
 ## Mouse Down Sampling and Dimplot
 ```{r}
 #subset human only
-mouse_objects_list <- sobj_list[c("S0006_mouse",
-                                "d14_pos_m",
-                                "d28_pos_m",
-                                "d49_pos_m")]
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+combined_data <- qs::qread("output/rdata/combined_data.qs")
 
-mouse_objects_list
+Idents(combined_data) <- combined_data$cell_type_final
 
+#subset the combined mouse object so that you can downsample
+mouse_annotated_list <- list()
+for (stuff in unique(combined_data$obj_name)) {
+    print(stuff)
+    temp_obj <- subset(combined_data, 
+                       subset = obj_name == stuff)
+    mouse_annotated_list[[stuff]] <- temp_obj
+}
+
+set.seed(4444)
 #Downsample
-for (i in seq_len(length(mouse_objects_list))) {
-    temp_obj <- mouse_objects_list[[i]]
+for (i in seq_len(length(mouse_annotated_list))) {
+    temp_obj <- mouse_annotated_list[[i]]
     current_n_cells <- length(Cells(temp_obj))
     sub_n_cells <- min(4500, current_n_cells)
     temp_obj <- temp_obj[, sample(1:current_n_cells, sub_n_cells)]
-    mouse_objects_list[[i]] <- temp_obj
+    mouse_annotated_list[[i]] <- temp_obj
 }
-mouse_objects_list
 
-set.seed(4444)
+mouse_annotated_list
+
 #downsampled objects are merged and seurat process for dimplot
 downsample_umap_mouse_only <-
-    merge(mouse_objects_list[["S0006_mouse"]],
-            y = mouse_objects_list[c("d14_pos_m",
+    merge(mouse_annotated_list[["S0006_mouse"]],
+            y = mouse_annotated_list[c("d14_pos_m",
                             "d28_pos_m",
                             "d49_pos_m")],
             add.cell.ids = c("Mouse_control_lung",
@@ -1082,10 +1091,10 @@ downsample_umap_mouse_only <-
                             "Midpoint_mouse_stroma",
                             "Late_mouse_stroma"),
             project = "downsample_umap_mouse_only") %>%
-            process_seurat(resolution=0.3)
+            process_seurat()
 
 #combined
-downsample_mouse_combined <- DimPlot(downsample_umap_mouse_only) +
+downsample_mouse_combined <- DimPlot(downsample_umap_mouse_only, group.by = "cell_type_final") +
                         theme_roberts() +
                         labs(title = "Mouse control and stroma") +
                         theme(plot.title = element_text(hjust = 0.5)) +
@@ -1118,8 +1127,8 @@ ggsave("output/figures/downsample_mouse_combined.pdf",
        plot = downsample_mouse_combined)
 
 ggsave("output/figures/downsample_mouse_split.pdf",
-       width = 6,
-       height = 6,
+       width = 12,
+       height = 4,
        plot = downsample_mouse_split)
 
 
@@ -1131,15 +1140,13 @@ plots_all <-
     plot_layout(widths = c(1, 4))
 plots_all
 
-
 #save the plot
 ggsave("output/figures/plots_all.pdf",
-       width = 10,
+       width = 16,
        height = 4,
        plot = plots_all)
 
 ```
-
 
 
 ## Non-downsample UMAP plots
@@ -1645,22 +1652,24 @@ weighted_networks_lr <-
     drop_na()
 ```
 
-## Nichenetr Analysis
+
+## Nichenet Analysis
 ```{r}
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 combined_data <- qs::qread("output/rdata/combined_data.qs")
 
-#seurat objects sender of signal
-sender_sobj <-
-    merge(sobj_list[["d14_pos_m"]],
-          y = sobj_list[c("d28_pos_m")],
-          add.cell.ids = c("Early_mouse_stroma",
-                            "Midpoint_mouse_stroma"),
-            project = "sender_sobj") %>%
-            process_seurat()
+#seurat objects sender of signal, subset form the combined_data with cell annotation
+sender_sobj <- subset(combined_data, 
+                      obj_name == c("d14_pos_m", "d28_pos_m")) %>%
+               process_seurat()                      
+
+#visualize what cell types are there in sender
+DimPlot(sender_sobj, group.by = "cell_type_final") 
+
+# Combined mid and late tumor and label it established 
 
 #seurat objects receiver of signal
-receiver_sobj <-
+established_tumor_sobj <- 
     merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[c("d28_pos_h")],
           add.cell.ids = c("Early_metastatic_tumor",
@@ -1670,51 +1679,101 @@ receiver_sobj <-
 
 #The combined object for both sender and receiver
 sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h",
+          y = sobj_list[c("d28_pos_h", 
                           "d14_pos_m",
                           "d28_pos_m")],
           add.cell.ids = c("Early_metastatic_tumor",
                            "Midpoint_metastatic_tumor",
-                           "Early_mouse_stroma",
-                           "Midpoint_mouse_stroma"),
-          project      =   "sender_receiver_sobj") %>%
-          process_seurat()
+                           "Late_metastatic_tumor"),
+          project      =   "established_tumor_sobj") %>%
+    process_seurat()
 
-#set the same idents for all the objects
-Idents(sender_sobj) <- "group"
-Idents(receiver_sobj) <- "group"
-Idents(sender_receiver_sobj) <- "group"
+established_tumor_sobj$cell_type_final <- "Established_metastatic_tumor"
+Idents(established_tumor_sobj) <- established_tumor_sobj$cell_type_final
+
+sobj_list$tibia_tumor_h$cell_type_final <- "Primary_tumor"
+Idents(sobj_list$tibia_tumor_h) <- sobj_list$tibia_tumor_h$cell_type_final
+
+#find the target differentially expressed genes between the primary vs mets
+Target_genes_obj <- merge(sobj_list$tibia_tumor_h, 
+                              y = established_tumor_sobj,
+                              add.cell.ids = c ("Primary_tumor",
+                                                "Established_metastatic_tumor"),
+                              project      = "Target_genes_obj") %>%
+                        process_seurat()
+
+Idents(Target_genes_obj) <- Target_genes_obj$cell_type_final
 
 #Gives the list of target genes from the receiver dataset
-gset_stuff <- find_tar_genes(receiver_sobj,
-                            id1 = "Early_metastatic_tumor",
-                            id2 = "Midpoint_metastatic_tumor",
+gset_stuff <- find_tar_genes(Target_genes_obj, 
+                            id1 = "Primary_tumor",
+                            id2 = "Established_metastatic_tumor",
                             pval = 0.05,
                             logfc = 0.25,
                             spec = "human")
 
-#Download the ligand_receptor reference
-rrrSingleCellUtils:::gen_lig_receptor_ref()
+#insert the cell_type_final column to be consistent with the idents
+Idents(Target_genes_obj) <- Target_genes_obj$cell_type_final
 
+Target_genes_obj$cell_type_final <- 
+    stringr::str_replace_all(Target_genes_obj$cell_type_final, "_", " ")
+
+#The combined object for both sender and receiver
+sender_receiver_sobj <- merge(sender_sobj, 
+                              y = Target_genes_obj,
+                              add.cell.ids = c ("sender_sobj",
+                                                "Target_genes_obj"),
+                              project      = "sender_receiver_sobj") %>%
+                        process_seurat()
+
+Idents(sender_receiver_sobj) <- sender_receiver_sobj$cell_type_final
+
+#set the same idents for all the objects
+Idents(sender_sobj) <- sender_sobj$cell_type_final
+Idents(Target_genes_obj) <- established_tumor_sobj$cell_type_final
+Idents(sender_receiver_sobj) <- sender_receiver_sobj$cell_type_final
+
+pdf("junk.pdf")
 # Finds the ligands and genes target relationship in the sender and receiver: basically runs the nichenetr analysis
-fl_object <- find_ligands(sender_receiver_sobj,                    #sender seurat object
-                        gset = gset_stuff,                         #genes list form the receiver
-                        receiver = unique(Idents(receiver_sobj)),
-                        senders = unique(Idents(sender_sobj)),
-                        gset_spec = "human",
-                        rec_spec = "human",
-                        send_spec = "mouse")
+fl_object <-
+    find_ligands(sender_receiver_sobj,                    #sender seurat object
+                 gset = gset_stuff,                         #genes list form the receiver
+                 receiver = unique(Idents(Target_genes_obj)),
+                 senders = c("Dendritic",
+                             "Fibroblast",
+                             "TAM",
+                             "Alveolar Mac",
+                             "TIM",
+                             "NK",
+                             "Monocyte",
+                             "Interstitial Mac",
+                             "Mesothelial"),
+                 gset_spec = "human",
+                 rec_spec = "human",
+                 send_spec = "mouse",
+                 stringency = "strict",
+                 d_plot = TRUE,
+                 lt_vis = TRUE,
+                 lr_vis = TRUE)
 
+dev.off()
 #makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
-complex_heatmap <- plot_complex_heatmap(fl_object,
+complex_heatmap_privsmets <- plot_complex_heatmap(fl_object,
                                         grid_color_low = "gray95",
                                         grid_color_high = "midnightblue",
                                         point_color_low = "white",
                                         point_color_high = "darkred")
 
-complex_heatmap
+complex_heatmap_privsmets
 
+ggsave("output/figures/complex_heatmap_privsmets.pdf",
+       width = 12,
+       height = 6,
+       plot = complex_heatmap_privsmets)
 ```
+
+
+
 
 ```{r, cache=FALSE}
 sessionInfo()
