@@ -631,6 +631,8 @@ overall_de <-
     FindMarkers(combined_data,
                 ident.1 = "Control lung",
                 logfc.threshold = 0)
+qs::qsave(overall_de,
+          file = "output/rdata/overall_de.qs")
 ```
 
 ### Plot cell types of mouse cells
@@ -845,6 +847,8 @@ for (factor_name in c("group_name", "sample_description")) {
 ```
 
 ## Make main figures for growth factors
+
+############################################ Maybe use scaled gene expression values?
 I'd like the following cell types to be in the main figure: dendritic cells, fibroblasts, macrophages, and monocytes And the following genes: AREG, EREG, FGF2, FGF10, FGF18, HBEGF, HGF, IFG1, NRG1, PDGFa, PDGFb, PDGFc, TGFa, TGFb1, and VEGFa
 ```{r main_figs, dependson='deGrowthFactorMets'}
 combined_subset <- qs::qread("output/rdata/combined_subset.qs")
@@ -853,14 +857,10 @@ cell_type_de <- read_tsv("output/de/cell_type_de.txt",
                          show_col_types = FALSE)
 
 main_figure_genes <-
-    c("Areg", "Ereg", "Fgf2", "Fgf10", "Fgf18", "Hbegf", "Hgf", "Igf1", "Nrg1",
-      "Pdgfa", "Pdgfb", "Pdgfc", "Tgfa", "Tgfb1", "Vegfa")
+    c("Areg", "Ccn2", "Ereg", "Fgf2", "Fgf9", "Igf1", "Nampt", "Tgfb1")
 
 main_figure_cell_types <-
-    c("Dendritic", "Fibroblast", "Alveolar Mac", "Monocyte", "Epithelial")
-
-main_jitter_cell_types <-
-    c("Alveolar Mac", "Monocyte", "TAM", "Fibroblast", "Epithelial")
+    c("TAM", "TIM", "Fibroblast", "Alveolar Mac", "Monocyte", "Mesothelial")
 
 combined_subset_main <-
     subset(combined_subset,
@@ -885,7 +885,7 @@ for (factor_name in c("group_name", "sample_description")) {
                               -cell),
                      names_to = "gene",
                      values_to = "expression") %>%
-        filter(cell_type %in% main_jitter_cell_types) %>%
+        filter(cell_type %in% main_figure_cell_types) %>%
         group_by(cell_type, group_col, gene) %>%
         summarize(expr_mean = mean(expression),
                   pct_expr = sum(expression > 0) / n(),
@@ -897,7 +897,6 @@ for (factor_name in c("group_name", "sample_description")) {
         ggplot(temp_data,
            aes(x = group_col,
                y = cell_type,
-#               group = group_name,
                color = expr_mean,
                size = pct_expr)) +
         geom_point(position = position_dodge(0.5)) +
@@ -1288,27 +1287,30 @@ marker_table <-
             "Late_metastatic_tumor",     "Primary_tumor")
 
 #make a list that you can append to
-markers_list <- list()
-gsea_gene_lists <- list()
+# markers_list <- list()
+# gsea_gene_lists <- list()
 #FindMarkers since we comaring across only two groups
-gsea_lists <- parallel::mclapply(1:nrow(marker_table), function(i) {
-    df <- FindMarkers(human_only,
-        ident.1 = marker_table$item1[i],
-        ident.2 = marker_table$item2[i],
-        min.pct = 0.1,
-        logfc.threshold = 0)
-    filename1 <- paste0("output/de/",
-        marker_table$item1[i],
-        "_",
-        marker_table$item2[i],
-        ".tsv")
-    write_tsv(as.data.frame(df), file = filename1)
-    return(df)
-}, mc.cores = 5)
+gsea_lists <-
+    parallel::mclapply(1:nrow(marker_table), function(i) {
+        df <- FindMarkers(human_only,
+            ident.1 = marker_table$item1[i],
+            ident.2 = marker_table$item2[i],
+            min.pct = 0.1,
+            logfc.threshold = 0)
+        filename1 <-
+            paste0("output/de/",
+                   marker_table$item1[i],
+                   "_",
+                   marker_table$item2[i],
+                   ".tsv")
+        write_tsv(as.data.frame(df), file = filename1)
+        return(df)
+    }, mc.cores = 5)
 
-names(gsea_lists) <- paste0(marker_table$item1,
-                            "_vs_",
-                            marker_table$item2)
+names(gsea_lists) <-
+    paste0(marker_table$item1,
+           "_vs_",
+           marker_table$item2)
 
 qs::qsave(gsea_lists, file = "output/rdata/gsea_gene_lists.qs")
 ```
@@ -1376,7 +1378,7 @@ primary_vs_early <-
     top5up_down$Primary_tumor_vs_Early_metastatic_tumor
 early_vs_midpoint <-
     top5up_down$Early_metastatic_tumor_vs_Midpoint_metastatic_tumor
-    
+
 #Replace the "_" with space
 primary_vs_early$pathway <-
     stringr::str_replace_all(primary_vs_early$pathway, "_", " ")
