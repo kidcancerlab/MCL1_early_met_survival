@@ -1557,36 +1557,27 @@ Genes/markers tested : differential expression from ident1=early and ident2=mid
 ```{r}
 load("output/rdata/sobj_list.rds")
 
-#seurat object: sender of signal
-sender_sobj <-
-    merge(sobj_list[["d14_pos_m"]],
-          y = sobj_list[c("d28_pos_m")],
-          add.cell.ids = c("Early_mouse_stroma",
-                            "Midpoint_mouse_stroma"),
-            project = "sender_sobj") %>%
-            process_seurat()
+# Seurat object: sender of signal
+sender_sobj <- combined_data %>%
+    subset(cell_type_final != "Epithelial" &
+        cell_type_final != "Endothelial")
+Idents(sender_sobj) <- "cell_type_final"
+sender_sobj$nichenet_id <- sender_sobj$cell_type_final
 
-#seurat object: receiver of signal
-receiver_sobj <-
-    merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h")],
-          add.cell.ids = c("Early_metastatic_tumor",
-                           "Midpoint_metastatic_tumor"),
-          project      =   "receiver_sobj") %>%
-          process_seurat()
+# Seurat object: receiver of signal
+receiver_sobj <- human_only %>%
+    subset(group != "Late_metastatic_tumor" &
+        group != "Midpoint_metastatic_tumor")
+receiver_sobj$group[receiver_sobj$group == "Early_metastatic_tumor"] <-
+    "Early_metastasis"
+receiver_sobj$nichenet_id <- receiver_sobj$group
 
-# combine all of the objects
-sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h",
-                          "d14_pos_m",
-                          "d28_pos_m")],
-          add.cell.ids = c("receiver",
-                           "receiver",
-                           "sender",
-                           "sender"),
+# Seurat object: combined objects
+sender_receiver_sobj <- merge(sender_sobj,
+          y = receiver_sobj,
+          add.cell.ids = c("sender", "receiver"),
           project      =   "sender_receiver_sobj") %>%
           process_seurat()
-
 ```
 
 ## Get the pre-defined model data
@@ -1607,7 +1598,6 @@ weighted_networks_lr <-
     inner_join(lr_network %>% distinct(from, to),
                by = c("from", "to"))
 ```
-
 
 ## Convert the gene names in model to mouse
 ```{r}
@@ -1646,54 +1636,31 @@ weighted_networks_lr <-
 
 ## Nichenetr Analysis
 ```{r}
-sobj_list <- qs::qread("output/rdata/sobj_list.qs")
-combined_data <- qs::qread("output/rdata/combined_data.qs")
+# Set the same idents for all the objects
+Idents(sender_sobj) <- "nichenet_id"
+Idents(receiver_sobj) <- "nichenet_id"
+Idents(sender_receiver_sobj) <- "nichenet_id"
 
-#seurat objects sender of signal
-sender_sobj <-
-    merge(sobj_list[["d14_pos_m"]],
-          y = sobj_list[c("d28_pos_m")],
-          add.cell.ids = c("Early_mouse_stroma",
-                            "Midpoint_mouse_stroma"),
-            project = "sender_sobj") %>%
-            process_seurat()
+# Extract the genesets identified in the GSEA
+pathways <- c("PDGF_UP.V1_DN", "PDGF_UP.V1_UP", "VEGF_A_UP.V1_DN",
+    "VEGF_A_UP.V1_DN", "ERBB2_UP.V1_UP", "ERBB2_UP.V1_DN",
+    "PGF_UP.V1_UP", "PGF_UP.V1_DN")
 
-#seurat objects receiver of signal
-receiver_sobj <-
-    merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h")],
-          add.cell.ids = c("Early_metastatic_tumor",
-                           "Midpoint_metastatic_tumor"),
-          project      =   "receiver_sobj") %>%
-          process_seurat()
+pathway_genes <- msigdbr(species = "human", category = "C6") %>%
+    filter(gs_name %in% pathways) %>%
+    pull(gene_symbol)
 
-#The combined object for both sender and receiver
-sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h",
-                          "d14_pos_m",
-                          "d28_pos_m")],
-          add.cell.ids = c("Early_metastatic_tumor",
-                           "Midpoint_metastatic_tumor",
-                           "Early_mouse_stroma",
-                           "Midpoint_mouse_stroma"),
-          project      =   "sender_receiver_sobj") %>%
-          process_seurat()
-
-#set the same idents for all the objects
-Idents(sender_sobj) <- "group"
-Idents(receiver_sobj) <- "group"
-Idents(sender_receiver_sobj) <- "group"
-
-#Gives the list of target genes from the receiver dataset
+# Gives the list of target genes from the receiver dataset
 gset_stuff <- find_tar_genes(receiver_sobj,
-                            id1 = "Early_metastatic_tumor",
-                            id2 = "Midpoint_metastatic_tumor",
+                            id1 = c("Early_metastasis"),
+                            id2 = c("Primary_tumor"),
                             pval = 0.05,
                             logfc = 0.25,
-                            spec = "human")
+                            spec = "human") %>%
+    intersect(pathway_genes)
 
-#Download the ligand_receptor reference
-rrrSingleCellUtils:::gen_lig_receptor_ref()
+# Download the ligand_receptor reference
+# rrrSingleCellUtils:::gen_lig_receptor_ref()
 
 # Finds the ligands and genes target relationship in the sender and receiver: basically runs the nichenetr analysis
 fl_object <- find_ligands(sender_receiver_sobj,                    #sender seurat object
@@ -1704,15 +1671,14 @@ fl_object <- find_ligands(sender_receiver_sobj,                    #sender seura
                         rec_spec = "human",
                         send_spec = "mouse")
 
-#makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
+# Makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
 complex_heatmap <- plot_complex_heatmap(fl_object,
                                         grid_color_low = "gray95",
-                                        grid_color_high = "midnightblue",
-                                        point_color_low = "white",
+                                        grid_color_high = "steelblue4",
+                                        point_color_low = "gray95",
                                         point_color_high = "darkred")
 
 complex_heatmap
-
 ```
 
 ```{r, cache=FALSE}
