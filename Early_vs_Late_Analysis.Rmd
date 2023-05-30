@@ -409,7 +409,7 @@ dot_plot <-
             features = gene_list,
             group.by = "group",
             scale = FALSE,
-            cols = c("blue", "red")) +
+            cols = c("lightgoldenrod", "darkred")) +
   RotatedAxis() +
   coord_fixed()
 
@@ -1063,7 +1063,7 @@ Idents(combined_data) <- combined_data$cell_type_final
 mouse_annotated_list <- list()
 for (stuff in unique(combined_data$obj_name)) {
     print(stuff)
-    temp_obj <- subset(combined_data, 
+    temp_obj <- subset(combined_data,
                        subset = obj_name == stuff)
     mouse_annotated_list[[stuff]] <- temp_obj
 }
@@ -1332,7 +1332,7 @@ cat_tib <-
             "C4",               NULL,
             "C6",               NULL)
 
-for (i in seq_len(nrow(category_tibble))) {
+for (i in seq_len(nrow(cat_tib))) {
     message(cat_tib$category[i])
     kegg_ref <-
         msigdbr::msigdbr(species = "Homo sapiens",
@@ -1352,20 +1352,21 @@ for (i in seq_len(nrow(category_tibble))) {
 
             result <-
                 fgsea::fgseaMultilevel(kegg_ref,
-                                    gsea_input,
-                                    minSize = 15,      # min size of gene set to test
-                                    maxSize = 500,     # max size of a gene set to test
-                                    nPerm = 1000) %>%  # number of permutations to test
+                                       gsea_input,
+                                       minSize = 15,
+                                       maxSize = 500,
+                                       nPerm = 1000) %>%
                 arrange(padj, desc(NES)) %>%
                     mutate(pathway =
                         str_replace_all(pathway, "_", " ") %>%
-                        str_remove("KEGG") %>%
-                        str_to_sentence()) %>%
+                        str_remove("KEGG_")) %>%
                     filter(padj < 0.05)
 
             write_tsv(result,
-                    file = paste0("output/gsea/",
-                                    markers_list[item],
+                      file = paste0("output/gsea/",
+                                    item,
+                                    "category_",
+                                    cat_tib$category[i],
                                     ".tsv"))
             return(result)
     }, mc.cores = 5)
@@ -1386,44 +1387,23 @@ for (i in seq_len(nrow(category_tibble))) {
                 mutate(pathway = as.factor(pathway) %>%
                         fct_reorder(NES))
 
-        #prepare the label for the plot
-        lab4plot <-
-            tibble(y = c(-4, 4),
-                   x = c(0.5, 0.5),
-                   label = as.factor(str_replace_all(item, "_", " ") %>%
-                                        str_split(" vs ") %>%
-                                        unlist()),
-                                     levels = str_replace_all(item, "_", " ") %>%
-                                                str_split(" vs ") %>%
-                                                unlist() %>%
-                                                rev())
-
         # make bubble plot
         bubble <-
             ggplot() +
                 geom_point(data = top5up_down,
                            aes(x = NES,
                                y = pathway,
-                               size = NES,
                                color = padj)) +
-                labs(title = item,
+                labs(title = str_replace_all(item, "_", " "),
                      subtitle = paste0("Activated in ",
                                       str_replace_all(item, "_", " ") %>%
+                                                str_to_lower() %>%
                                                 str_split(" vs ") %>%
                                                 unlist() %>%
                                                 rev()) %>%
                         paste(collapse = "       ")) +
-                theme(plot.subtitle = element_text(hjust = 0.5)) #+
-                # geom_text(data = lab4plot,
-                #           aes(x = x,
-                #               y = y,
-                #               label = label),
-                #         fontface = "bold",
-                #         size = 2) +
-                # scale_color_gradient2(high = "#ff0000",
-                #         mid = "#ffffff",
-                #         low = "#3942c0",
-                #         midpoint = 0.05)
+                theme(plot.subtitle = element_text(hjust = 0.5))
+
         ggsave(paste0("output/figures/gsea_bubble_",
                       item,
                       "cat_",
@@ -1556,8 +1536,6 @@ dev.off()
 save(figure_2c, file = "Figures/figure_2c.pdf.RData")
 ```
 
-
-
 # Nichenetr
 sender : all stroma/mouse cells from the early+mid
 receiver : Human cells/tumor from the early+mid
@@ -1659,17 +1637,17 @@ sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 combined_data <- qs::qread("output/rdata/combined_data.qs")
 
 #seurat objects sender of signal, subset form the combined_data with cell annotation
-sender_sobj <- subset(combined_data, 
+sender_sobj <- subset(combined_data,
                       obj_name == c("d14_pos_m", "d28_pos_m")) %>%
-               process_seurat()                      
+               process_seurat()
 
 #visualize what cell types are there in sender
-DimPlot(sender_sobj, group.by = "cell_type_final") 
+DimPlot(sender_sobj, group.by = "cell_type_final")
 
-# Combined mid and late tumor and label it established 
+# Combined mid and late tumor and label it established
 
 #seurat objects receiver of signal
-established_tumor_sobj <- 
+established_tumor_sobj <-
     merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[c("d28_pos_h")],
           add.cell.ids = c("Early_metastatic_tumor",
@@ -1679,7 +1657,7 @@ established_tumor_sobj <-
 
 #The combined object for both sender and receiver
 sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h", 
+          y = sobj_list[c("d28_pos_h",
                           "d14_pos_m",
                           "d28_pos_m")],
           add.cell.ids = c("Early_metastatic_tumor",
@@ -1695,7 +1673,7 @@ sobj_list$tibia_tumor_h$cell_type_final <- "Primary_tumor"
 Idents(sobj_list$tibia_tumor_h) <- sobj_list$tibia_tumor_h$cell_type_final
 
 #find the target differentially expressed genes between the primary vs mets
-Target_genes_obj <- merge(sobj_list$tibia_tumor_h, 
+Target_genes_obj <- merge(sobj_list$tibia_tumor_h,
                               y = established_tumor_sobj,
                               add.cell.ids = c ("Primary_tumor",
                                                 "Established_metastatic_tumor"),
@@ -1705,7 +1683,7 @@ Target_genes_obj <- merge(sobj_list$tibia_tumor_h,
 Idents(Target_genes_obj) <- Target_genes_obj$cell_type_final
 
 #Gives the list of target genes from the receiver dataset
-gset_stuff <- find_tar_genes(Target_genes_obj, 
+gset_stuff <- find_tar_genes(Target_genes_obj,
                             id1 = "Primary_tumor",
                             id2 = "Established_metastatic_tumor",
                             pval = 0.05,
@@ -1715,11 +1693,11 @@ gset_stuff <- find_tar_genes(Target_genes_obj,
 #insert the cell_type_final column to be consistent with the idents
 Idents(Target_genes_obj) <- Target_genes_obj$cell_type_final
 
-Target_genes_obj$cell_type_final <- 
+Target_genes_obj$cell_type_final <-
     stringr::str_replace_all(Target_genes_obj$cell_type_final, "_", " ")
 
 #The combined object for both sender and receiver
-sender_receiver_sobj <- merge(sender_sobj, 
+sender_receiver_sobj <- merge(sender_sobj,
                               y = Target_genes_obj,
                               add.cell.ids = c ("sender_sobj",
                                                 "Target_genes_obj"),
