@@ -1,6 +1,6 @@
 ---
 title: "Data Analysis for Early and Late Lung-colonizing Tumors"
-author: "Emily Franz and Matt Cannon"
+author: "Emily Franz, Ryan Roberts, Yogesh Budhathoki and Matt Cannon"
 date: "`r format(Sys.time(), '%m/%d/%Y')`"
 output:
     html_document:
