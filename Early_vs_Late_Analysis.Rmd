@@ -869,7 +869,7 @@ cell_type_de <- read_tsv("output/de/cell_type_de.txt",
                          show_col_types = FALSE)
 
 main_figure_genes <-
-    c("Areg", "Ccn2", "Ereg", "Fgf2", "Fgf9", "Igf1", "Nampt", "Tgfb1")
+    c("Ereg", "Fgf2", "Hbegf", "Nrg1", "Vegfa")
 
 main_figure_cell_types <-
     c("TAM", "TIM", "Fibroblast", "Alveolar Mac", "Monocyte", "Mesothelial")
