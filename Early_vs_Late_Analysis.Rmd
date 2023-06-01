@@ -156,7 +156,7 @@ sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
 
     message(paste("Sample", i, "completed"))
     return(sobj)
-}, mc.cores = 5)
+}, mc.cores = parallelly::availableCores())
 
 names(sobj_list) <- sample_list$obj_name
 
@@ -1221,7 +1221,7 @@ gsea_lists <-
                    ".tsv")
         write_tsv(as.data.frame(df), file = filename1)
         return(df)
-    }, mc.cores = 5)
+    }, mc.cores = parallelly::availableCores())
 
 names(gsea_lists) <-
     paste0(marker_table$item1,
@@ -1277,7 +1277,7 @@ for (i in seq_len(nrow(cat_tib))) {
                                     cat_tib$category[i],
                                     ".tsv"))
             return(result)
-    }, mc.cores = 5)
+    }, mc.cores = parallelly::availableCores())
 
     names(kegg_results_list) <- names(gsea_lists)
 
