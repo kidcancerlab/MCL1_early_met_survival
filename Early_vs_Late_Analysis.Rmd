@@ -1643,19 +1643,19 @@ gset_stuff <- find_tar_genes(receiver_sobj,
 # Finds the ligands and genes target relationship in the sender and receiver:
 # Basically runs the nichenetr analysis
 fl_object <- find_ligands(sender_receiver_sobj,
-                        gset = gset_stuff,
-                        receiver = unique(Idents(receiver_sobj)),
-                        senders = unique(Idents(sender_sobj)),
-                        gset_spec = "human",
-                        rec_spec = "human",
-                        send_spec = "mouse")
+    gset = gset_stuff,
+    receiver = unique(Idents(receiver_sobj)),
+    senders = unique(Idents(sender_sobj)),
+    gset_spec = "human",
+    rec_spec = "human",
+    send_spec = "mouse")
 
 # Makes the plot, plots (fl_object[[7]]) object. Check (fl_object[[7]])
 complex_heatmap <- plot_complex_heatmap(fl_object,
-                                        grid_color_low = "gray95",
-                                        grid_color_high = "steelblue4",
-                                        point_color_low = "gray95",
-                                        point_color_high = "darkred")
+    grid_color_low = "gray95",
+    grid_color_high = "steelblue4",
+    point_color_low = "gray95",
+    point_color_high = "darkred")
 
 complex_heatmap
 ```
