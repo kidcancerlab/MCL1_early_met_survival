@@ -1,0 +1,105 @@
+Ingenuity Canonical Pathways	 -log(p-value)	Ratio	z-score	Molecules
+Chaperone Mediated Autophagy Signaling Pathway	4.64E+00	3.29E-02	2.236	"DNAJB1,HSP90AA1,HSP90AB1,MTRNR2L12,MTRNR2L8"
+Aldosterone Signaling in Epithelial Cells	3.97E+00	3.70E-02	NaN	"DNAJB1,HSP90AA1,HSP90AB1,HSPH1"
+Role of JAK family kinases in IL-6-type Cytokine Signaling	3.85E+00	6.82E-02	NaN	"HSP90AA1,HSP90AB1,VEGFA"
+Nitric Oxide Signaling in the Cardiovascular System	3.82E+00	6.67E-02	NaN	"HSP90AA1,HSP90AB1,VEGFA"
+Gluconeogenesis I	3.46E+00	1.67E-01	NaN	"GAPDH,PGK1"
+eNOS Signaling	3.45E+00	5.00E-02	NaN	"HSP90AA1,HSP90AB1,VEGFA"
+MicroRNA Biogenesis Signaling Pathway	3.43E+00	2.68E-02	1	"DNAJB1,HSP90AA1,HSP90AB1,VEGFA"
+Glycolysis I	3.39E+00	1.54E-01	NaN	"GAPDH,PGK1"
+Hypoxia Signaling in the Cardiovascular System	3.31E+00	4.48E-02	NaN	"HSP90AA1,HSP90AB1,VEGFA"
+IL-17 Signaling	3.29E+00	4.41E-02	NaN	"HSP90AA1,HSP90AB1,VEGFA"
+Protein Ubiquitination Pathway	2.78E+00	1.79E-02	NaN	"DNAJB1,HSP90AA1,HSP90AB1,HSPH1"
+Th17 Activation Pathway	2.75E+00	7.41E-02	NaN	"HSP90AA1,HSP90AB1"
+Thyronamine and Iodothyronamine Metabolism	2.63E+00	1.00E+00	NaN	DIO2
+Thyroid Hormone Metabolism I (via Deiodination)	2.63E+00	1.00E+00	NaN	DIO2
+Role of Tissue Factor in Cancer	2.49E+00	2.34E-02	NaN	"CCN1,EGR1,VEGFA"
+NRF2-mediated Oxidative Stress Response	2.32E+00	2.04E-02	NaN	"DNAJB1,HSP90AA1,HSP90AB1"
+Immunogenic Cell Death Signaling Pathway	2.27E+00	4.26E-02	NaN	"HSP90AA1,HSP90AB1"
+Xenobiotic Metabolism AHR Signaling Pathway	2.25E+00	4.17E-02	NaN	"HSP90AA1,HSP90AB1"
+ABRA Signaling Pathway	2.15E+00	3.70E-02	NaN	"EGR1,VEGFA"
+Thyroid Hormone Metabolism II (via Conjugation and/or Degradation)	2.15E+00	3.33E-01	NaN	DIO2
+NADH Repair	2.15E+00	3.33E-01	NaN	GAPDH
+Mitotic Roles of Polo-Like Kinase	2.11E+00	3.51E-02	NaN	"HSP90AA1,HSP90AB1"
+White Adipose Tissue Browning Pathway	2.04E+00	3.23E-02	NaN	"DIO2,VEGFA"
+EIF2 Signaling	2.03E+00	1.60E-02	NaN	"RPL26,RPS10,VEGFA"
+NOD1/2 Signaling Pathway	1.95E+00	2.90E-02	NaN	"HSP90AA1,HSP90AB1"
+Role Of Chondrocytes In Rheumatoid Arthritis Signaling Pathway	1.93E+00	2.86E-02	NaN	"EGR1,VEGFA"
+Neuregulin Signaling	1.92E+00	2.82E-02	NaN	"HSP90AA1,HSP90AB1"
+Unfolded protein response	1.92E+00	2.82E-02	NaN	"DNAJB1,HSPH1"
+PPAR Signaling	1.91E+00	2.78E-02	NaN	"HSP90AA1,HSP90AB1"
+Xenobiotic Metabolism CAR Signaling Pathway	1.86E+00	2.60E-02	NaN	"HSP90AA1,HSP90AB1"
+Xenobiotic Metabolism PXR Signaling Pathway	1.83E+00	2.53E-02	NaN	"HSP90AA1,HSP90AB1"
+Telomerase Signaling	1.81E+00	2.47E-02	NaN	"HSP90AA1,HSP90AB1"
+Hepatic Fibrosis / Hepatic Stellate Cell Activation	1.80E+00	2.44E-02	NaN	"IGFBP5,VEGFA"
+Role of PKR in Interferon Induction and Antiviral Response	1.80E+00	2.44E-02	NaN	"HSP90AA1,HSP90AB1"
+IGF-1 Signaling	1.79E+00	2.41E-02	NaN	"CCN1,IGFBP5"
+Prostate Cancer Signaling	1.69E+00	2.13E-02	NaN	"HSP90AA1,HSP90AB1"
+Aryl Hydrocarbon Receptor Signaling	1.64E+00	2.00E-02	NaN	"HSP90AA1,HSP90AB1"
+Estrogen Receptor Signaling	1.61E+00	1.11E-02	NaN	"HSP90AA1,HSP90AB1,VEGFA"
+Androgen Signaling	1.60E+00	1.90E-02	NaN	"DNAJB1,HSP90AA1"
+Human Embryonic Stem Cell Pluripotency	1.54E+00	1.75E-02	NaN	"HSP90AA1,HSP90AB1"
+PPARα/RXRα Activation	1.50E+00	1.68E-02	NaN	"HSP90AA1,HSP90AB1"
+PI3K/AKT Signaling	1.50E+00	1.68E-02	NaN	"HSP90AA1,HSP90AB1"
+ID1 Signaling Pathway	1.47E+00	1.61E-02	NaN	"EGR1,VEGFA"
+HIF1α Signaling	1.47E+00	1.61E-02	NaN	"HSP90AA1,VEGFA"
+Maturity Onset Diabetes of Young (MODY) Signaling	1.36E+00	5.26E-02	NaN	GAPDH
+Xenobiotic Metabolism Signaling	1.35E+00	1.38E-02	NaN	"HSP90AA1,HSP90AB1"
+mTOR Signaling	1.28E+00	1.27E-02	NaN	"RPS10,VEGFA"
+Inhibition of Angiogenesis by TSP1	1.28E+00	4.35E-02	NaN	VEGFA
+Role of JAK2 in Hormone-like Cytokine Signaling	1.26E+00	4.17E-02	NaN	VEGFA
+Chronic Myeloid Leukemia Signaling	1.12E+00	1.03E-02	NaN	"HSP90AA1,HSP90AB1"
+VDR/RXR Activation	1.09E+00	2.78E-02	NaN	IGFBP5
+Sirtuin Signaling Pathway	1.01E+00	8.89E-03	NaN	"NDRG1,PGK1"
+VEGF Family Ligand-Receptor Interactions	1.01E+00	2.27E-02	NaN	VEGFA
+TR/RXR Activation	9.61E-01	2.04E-02	NaN	DIO2
+Amyotrophic Lateral Sclerosis Signaling	9.45E-01	1.96E-02	NaN	VEGFA
+Bladder Cancer Signaling	8.65E-01	1.61E-02	NaN	VEGFA
+BEX2 Signaling Pathway	8.65E-01	1.61E-02	NaN	VEGFA
+Renal Cell Carcinoma Signaling	8.59E-01	1.59E-02	NaN	VEGFA
+STAT3 Pathway	8.40E-01	1.52E-02	NaN	VEGFA
+Corticotropin Releasing Hormone Signaling	8.34E-01	1.49E-02	NaN	VEGFA
+VEGF Signaling	8.28E-01	1.47E-02	NaN	VEGFA
+BAG2 Signaling Pathway	8.22E-01	1.45E-02	NaN	HSP90AA1
+Glucocorticoid Receptor Signaling	8.15E-01	6.76E-03	NaN	"HSP90AA1,HSP90AB1"
+CDK5 Signaling	8.05E-01	1.39E-02	NaN	EGR1
+Relaxin Signaling	7.63E-01	1.25E-02	NaN	VEGFA
+Macrophage Alternative Activation Signaling Pathway	7.58E-01	1.23E-02	NaN	KDM6B
+T Cell Exhaustion Signaling Pathway	7.49E-01	1.20E-02	NaN	VEGFA
+IL-6 Signaling	7.44E-01	1.19E-02	NaN	VEGFA
+Tumor Microenvironment Pathway	7.44E-01	1.19E-02	NaN	VEGFA
+NAD Signaling Pathway	7.12E-01	1.10E-02	NaN	VEGFA
+Pathogen Induced Cytokine Storm Signaling Pathway	7.08E-01	1.09E-02	NaN	VEGFA
+MSP-RON Signaling In Cancer Cells Pathway	6.92E-01	1.04E-02	NaN	VEGFA
+Pancreatic Adenocarcinoma Signaling	6.84E-01	1.02E-02	NaN	VEGFA
+Endocannabinoid Cancer Inhibition Pathway	6.76E-01	1.00E-02	NaN	VEGFA
+CXCR4 Signaling	6.72E-01	9.90E-03	NaN	EGR1
+Ovarian Cancer Signaling	6.61E-01	9.62E-03	NaN	VEGFA
+Wound Healing Signaling Pathway	6.57E-01	9.52E-03	NaN	VEGFA
+Pulmonary Healing Signaling Pathway	6.50E-01	9.35E-03	NaN	VEGFA
+Role Of Osteoblasts In Rheumatoid Arthritis Signaling Pathway	6.46E-01	9.26E-03	NaN	VEGFA
+GNRH Signaling	6.46E-01	9.26E-03	NaN	EGR1
+Regulation Of The Epithelial Mesenchymal Transition By Growth Factors Pathway	6.29E-01	8.85E-03	NaN	EGR1
+B Cell Receptor Signaling	6.09E-01	8.40E-03	NaN	EGR1
+IL-8 Signaling	6.03E-01	8.26E-03	NaN	VEGFA
+Clathrin-mediated Endocytosis Signaling	6.00E-01	8.20E-03	NaN	VEGFA
+Regulation of the Epithelial-Mesenchymal Transition Pathway	6.00E-01	8.20E-03	NaN	EGR1
+Ribonucleotide Reductase Signaling Pathway	5.82E-01	7.81E-03	NaN	VEGFA
+ILK Signaling	5.79E-01	7.75E-03	NaN	VEGFA
+Osteoarthritis Pathway	5.76E-01	7.69E-03	NaN	VEGFA
+Ephrin Receptor Signaling	5.65E-01	7.46E-03	NaN	VEGFA
+Regulation of eIF4 and p70S6K Signaling	5.48E-01	7.14E-03	NaN	RPS10
+Coronavirus Pathogenesis Pathway	5.36E-01	6.90E-03	NaN	RPS10
+Colorectal Cancer Metastasis Signaling	5.07E-01	6.37E-03	NaN	VEGFA
+Autophagy	4.93E-01	6.13E-03	NaN	VEGFA
+"Role of Macrophages, Fibroblasts and Endothelial Cells in Rheumatoid Arthritis"	4.91E-01	6.10E-03	NaN	VEGFA
+CREB Signaling in Neurons	4.80E-01	5.92E-03	NaN	VEGFA
+Pulmonary Fibrosis Idiopathic Signaling Pathway	4.30E-01	5.13E-03	NaN	EGR1
+Breast Cancer Regulation by Stathmin1	4.25E-01	5.05E-03	NaN	VEGFA
+RAR Activation	4.23E-01	5.03E-03	NaN	VEGFA
+CLEAR Signaling Pathway	4.20E-01	4.98E-03	NaN	VEGFA
+Myelination Signaling Pathway	4.13E-01	4.88E-03	NaN	NDRG1
+Huntington's Disease Signaling	4.06E-01	4.78E-03	NaN	DNAJB1
+S100 Family Signaling Pathway	3.80E-01	4.42E-03	NaN	VEGFA
+Hepatic Fibrosis Signaling Pathway	3.74E-01	4.35E-03	NaN	VEGFA
+Axonal Guidance Signaling	3.16E-01	3.62E-03	NaN	VEGFA
