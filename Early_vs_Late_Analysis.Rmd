@@ -990,6 +990,7 @@ human_objects_list <- sobj_list[c("tibia_tumor_h",
                                 "d14_pos_h",
                                 "d28_pos_h",
                                 "d49_pos_h" )]
+
 human_objects_list
 
 set.seed(3333)
@@ -1001,6 +1002,8 @@ for (i in seq_len(length(human_objects_list))) {
     temp_obj <- temp_obj[, sample(1:current_n_cells, sub_n_cells)]
     human_objects_list[[i]] <- temp_obj
 }
+human_objects_list
+
 human_objects_list
 
 #Dimplot with down sample
@@ -1152,7 +1155,6 @@ ggsave("output/figures/plots_all.pdf",
        height = 4,
        plot = plots_all)
 
-```
 
 ## Non-downsample UMAP plots
 ```{r}
