@@ -1530,9 +1530,9 @@ sender : all stroma/mouse cells from the early+mid
 receiver : Human cells/tumor from the early+mid
 Genes/markers tested : differential expression from ident1=early and ident2=mid
 ```{r}
-load("output/rdata/sobj_list.rds")
+qs::qread("output/rdata/sobj_list.qs")
 
-#seurat object: sender of signal
+# Seurat object: sender of signal
 sender_sobj <-
     merge(sobj_list[["d14_pos_m"]],
           y = sobj_list[c("d28_pos_m")],
@@ -1541,7 +1541,7 @@ sender_sobj <-
             project = "sender_sobj") %>%
             process_seurat()
 
-#seurat object: receiver of signal
+# Seurat object: receiver of signal
 receiver_sobj <-
     merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[c("d28_pos_h")],
@@ -1550,7 +1550,7 @@ receiver_sobj <-
           project      =   "receiver_sobj") %>%
           process_seurat()
 
-# combine all of the objects
+# Combine all of the objects
 sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
           y = sobj_list[c("d28_pos_h",
                           "d14_pos_m",
