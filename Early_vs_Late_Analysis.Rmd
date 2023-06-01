@@ -1530,44 +1530,35 @@ sender : all stroma/mouse cells from the early+mid
 receiver : Human cells/tumor from the early+mid
 Genes/markers tested : differential expression from ident1=early and ident2=mid
 ```{r}
-qs::qread("output/rdata/sobj_list.qs")
+combined_data <- qs::qread("output/rdata/combined_data.qs")
 
 # Seurat object: sender of signal
-sender_sobj <-
-    merge(sobj_list[["d14_pos_m"]],
-          y = sobj_list[c("d28_pos_m")],
-          add.cell.ids = c("Early_mouse_stroma",
-                            "Midpoint_mouse_stroma"),
-            project = "sender_sobj") %>%
-            process_seurat()
+sender_sobj <- combined_data %>%
+    subset(cell_type_final != "Epithelial" &
+        cell_type_final != "Endothelial")
+Idents(sender_sobj) <- "cell_type_final"
+sender_sobj$nichenet_id <- sender_sobj$cell_type_final
 
 # Seurat object: receiver of signal
-receiver_sobj <-
-    merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h")],
-          add.cell.ids = c("Early_metastatic_tumor",
-                           "Midpoint_metastatic_tumor"),
-          project      =   "receiver_sobj") %>%
-          process_seurat()
+receiver_sobj <- human_only %>%
+    subset(group != "Late_metastatic_tumor" &
+        group != "Midpoint_metastatic_tumor")
+receiver_sobj$group[receiver_sobj$group == "Early_metastatic_tumor"] <-
+    "Early_metastasis"
+receiver_sobj$nichenet_id <- receiver_sobj$group
 
-# Combine all of the objects
-sender_receiver_sobj <- merge(sobj_list[["d14_pos_h"]],
-          y = sobj_list[c("d28_pos_h",
-                          "d14_pos_m",
-                          "d28_pos_m")],
-          add.cell.ids = c("receiver",
-                           "receiver",
-                           "sender",
-                           "sender"),
+# Seurat object: combined objects
+sender_receiver_sobj <- merge(sender_sobj,
+          y = receiver_sobj,
+          add.cell.ids = c("sender", "receiver"),
           project      =   "sender_receiver_sobj") %>%
           process_seurat()
-
 ```
 
 ## Get the pre-defined model data
 ```{r}
 ligand_target_matrix <-
-    readRDS( "nichenetrfiles/ligand_target_matrix.rds")
+    readRDS("nichenetrfiles/ligand_target_matrix.rds")
 
 # Use a strict definition of the network
 lr_network <-
