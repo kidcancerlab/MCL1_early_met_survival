@@ -644,6 +644,14 @@ combined_subset <-
 combined_subset <-
     combined_subset[rownames(combined_subset) %in% target_genes$mouse_gene, ]
 
+combined_subset$four_groups <-
+    combined_subset$group %>%
+    str_replace_all("_", " ") %>%
+    factor(levels = c("Mouse control lung",
+                      "Early mouse stroma",
+                      "Midpoint mouse stroma",
+                      "Late mouse stroma"))
+
 Idents(combined_subset) <- combined_subset$group_name
 
 qs::qsave(combined_subset,
@@ -677,7 +685,7 @@ for (cell_type in unique(combined_subset$cell_type_final)) {
 write_tsv(cell_type_de,
           file = "output/de/cell_type_de.txt")
 
-for (factor_name in c("group_name", "sample_description")) {
+for (factor_name in c("group_name", "four_groups")) {
     ############################################################################
     # Plot DE between lung and primary mets by cell type
     temp_data <-
@@ -697,6 +705,7 @@ for (factor_name in c("group_name", "sample_description")) {
                      values_to = "expression") %>%
         group_by(cell_type, group_col, gene) %>%
         summarize(expr_mean = mean(expression),
+                  num_cells = n(),
                   pct_expr = sum(expression > 0) / n(),
                   .groups = "drop") %>%
         mutate(gene_group = paste(gene, group_col, sep = "\n"))
@@ -706,7 +715,7 @@ for (factor_name in c("group_name", "sample_description")) {
            aes(x = group_col,
                y = cell_type,
                group = group_col,
-               color = expression,
+               color = expr_mean,
                size = pct_expr)) +
         geom_point() +
         facet_wrap(~ gene, nrow = 1) +
@@ -715,7 +724,9 @@ for (factor_name in c("group_name", "sample_description")) {
                              high = "darkred") +
         theme(axis.text.x = element_text(angle = 90,
                                          hjust = 1,
-                                         vjust = 0.5)) +
+                                         vjust = 0.5),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank()) +
         scale_y_discrete(limits = rev) +
         labs(x = "",
              y = "",
@@ -733,12 +744,6 @@ for (factor_name in c("group_name", "sample_description")) {
 
     plot_name <-
         temp_data %>%
-        group_by(group_col,
-                 cell_type,
-                 gene) %>%
-        summarize(prop_express = sum(expression > 0) / n(),
-                  num_cells = n(),
-                  .groups = "drop") %>%
         left_join(cell_type_de) %>%
         mutate(group = paste0(group_col,
                               " (n=",
@@ -750,12 +755,12 @@ for (factor_name in c("group_name", "sample_description")) {
                             "Non-significant")) %>%
         ggplot(aes(x = group,
                    y = gene,
-                   fill = prop_express)) +
+                   fill = pct_expr)) +
         geom_tile(aes(color = sig),
                   size = 0.5,
                   width = 0.9,
                   height = 0.9) +
-        geom_text(aes(label = sprintf("%.1f%%", prop_express * 100)),
+        geom_text(aes(label = sprintf("%.1f%%", pct_expr * 100)),
                   size = 1,
                   color = "lightgray") +
         facet_wrap(~ cell_type, nrow = 1, scales = "free_x") +
@@ -804,7 +809,7 @@ combined_subset_main <-
 combined_subset_main <-
     combined_subset_main[main_figure_genes, ]
 
-for (factor_name in c("group_name", "sample_description")) {
+for (factor_name in c("group_name", "four_groups")) {
     ############################################################################
     # Plot DE between lung and primary mets by cell type
     temp_data <-
@@ -834,12 +839,16 @@ for (factor_name in c("group_name", "sample_description")) {
                y = cell_type,
                color = expr_mean,
                size = pct_expr)) +
-        geom_point(position = position_dodge(0.5)) +
+        geom_point() +
         facet_wrap(~ gene, nrow = 1) +
         theme_robert() +
         scale_color_gradient(low = "white",
                              high = "darkred") +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+        theme(axis.text.x = element_text(angle = 90,
+                                         hjust = 1,
+                                         vjust = 0.5),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank()) +
         scale_y_discrete(limits = rev) +
         labs(x = "",
              y = "Expression",
@@ -857,29 +866,23 @@ for (factor_name in c("group_name", "sample_description")) {
 
     plot_name <-
         temp_data %>%
-        group_by(group_col,
-                 cell_type,
-                 gene) %>%
-        summarize(prop_express = sum(expr_mean > 0) / n(),
-                  num_cells = n(),
-                  .groups = "drop") %>%
         left_join(cell_type_de) %>%
         mutate(group = paste0(group_col,
-                            " (n=",
-                            num_cells,
-                            ")"),
-            p_val_adj = replace_na(p_val_adj, 1),
-            sig = ifelse(p_val_adj <= 0.05,
+                              " (n=",
+                              num_cells,
+                              ")"),
+               p_val_adj = replace_na(p_val_adj, 1),
+               sig = ifelse(p_val_adj <= 0.05,
                             "Significant",
                             "Non-significant")) %>%
         ggplot(aes(x = group,
                    y = gene,
-                   fill = prop_express)) +
+                   fill = pct_expr)) +
         geom_tile(aes(color = sig),
                   size = 1,
                   width = 0.9,
                   height = 0.9) +
-        geom_text(aes(label = sprintf("%.1f%%", prop_express * 100)),
+        geom_text(aes(label = sprintf("%.1f%%", pct_expr * 100)),
                   size = 2,
                   color = "lightgray") +
         facet_wrap(~ cell_type, nrow = 1, scales = "free_x") +
@@ -914,7 +917,7 @@ human_objects_list <-
     sobj_list[c("tibia_tumor_h",
                 "d14_pos_h",
                 "d28_pos_h",
-                "d49_pos_h" )]
+                "d49_pos_h")]
 
 set.seed(3333)
 for (i in seq_len(length(human_objects_list))) {
@@ -1053,8 +1056,8 @@ plots_all <-
 
 #save the plot
 ggsave("output/figures/plots_all.pdf",
-       width = 8,
-       height = 4,
+       width = 10,
+       height = 6,
        plot = plots_all)
 ```
 
