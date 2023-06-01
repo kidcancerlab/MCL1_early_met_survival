@@ -59,29 +59,34 @@ GSE151974
 ```{r mouse_refs}
 ref_path <- "/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse"
 
-data_matrix <-
-    read.csv(paste0(ref_path,
-                    "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
-             header = TRUE) %>%
-    column_to_rownames("X")
+if (file.exists(paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))){
+    mouse_lung_ref <- qs::qread(paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))
+} else {
+    data_matrix <-
+        read.csv(paste0(ref_path,
+                        "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
+                header = TRUE) %>%
+        column_to_rownames("X")
 
-metadata <-
-    read.csv(paste0(ref_path,
-                    "/GSE151974/GSE151974_cell_metadata_postfilter.csv.gz"),
-             header = TRUE) %>%
-    column_to_rownames("X")
+    metadata <-
+        read.csv(paste0(ref_path,
+                        "/GSE151974/GSE151974_cell_metadata_postfilter.csv.gz"),
+                header = TRUE) %>%
+        column_to_rownames("X")
 
-mouse_lung_ref <-
-    CreateSeuratObject(counts = data_matrix,
-                       project = "mouse_lung_ref",
-                       meta.data = metadata) %>%
-    subset(Oxygen == "Normoxia")
+    mouse_lung_ref <-
+        CreateSeuratObject(counts = data_matrix,
+                        project = "mouse_lung_ref",
+                        meta.data = metadata) %>%
+        subset(Oxygen == "Normoxia")
 
-mouse_lung_ref$cell_type <- mouse_lung_ref$CellType
-mouse_lung_ref$dataset <- "GSE151974"
+    mouse_lung_ref$cell_type <- mouse_lung_ref$CellType
+    mouse_lung_ref$dataset <- "GSE151974"
 
-qs::qsave(mouse_lung_ref,
-          file = paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))
+    qs::qsave(mouse_lung_ref,
+            file = paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))
+
+}
 
 mouse_immune <- celldex::ImmGenData()
 # This label is not informative
@@ -173,7 +178,7 @@ sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
 
     message(paste("Sample", i, "completed"))
     return(sobj)
-}, mc.cores = 5)
+}, mc.cores = parallelly::availableCores())
 
 names(sobj_list) <- sample_list$obj_name
 
@@ -1313,7 +1318,7 @@ gsea_lists <-
                    ".tsv")
         write_tsv(as.data.frame(df), file = filename1)
         return(df)
-    }, mc.cores = 5)
+    }, mc.cores = parallelly::availableCores())
 
 names(gsea_lists) <-
     paste0(marker_table$item1,
@@ -1369,7 +1374,7 @@ for (i in seq_len(nrow(cat_tib))) {
                                     cat_tib$category[i],
                                     ".tsv"))
             return(result)
-    }, mc.cores = 5)
+    }, mc.cores = parallelly::availableCores())
 
     names(kegg_results_list) <- names(gsea_lists)
 
