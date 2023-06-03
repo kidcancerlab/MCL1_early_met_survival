@@ -277,7 +277,10 @@ umap_group
 dev.off()
 
 # Reorder the group metadata variable
-tumor$group <- factor(tumor$group, levels = c("Primary", "Early", "Late"))
+tumor$group[tumor$group == "Early_metastatic_tumor"] <- "Early"
+tumor$group[tumor$group == "Midpoint_metastatic_tumor"] <- "Established"
+tumor$group[tumor$group == "Primary_tumor"] <- "Primary"
+tumor$group <- factor(tumor$group, levels = c("Primary", "Early", "Established"))
 
 umap_group_split <-
     r_dim_plot(tumor,
