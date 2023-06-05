@@ -447,10 +447,10 @@ Also plot each time point separately as a time-course
 ```{r deGrowthFactorMets, dependson='load'}
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 
-sobj_list$S0006_mouse$group_name <- "Control lung"
+sobj_list$S0006_mouse$group_name <- "Mouse control lung"
 
 for (sample_name in c("d14_pos_m", "d28_pos_m", "d49_pos_m")) {
-    sobj_list[[sample_name]]$group_name <- "Met. lung"
+    sobj_list[[sample_name]]$group_name <- "Stromal combined timepoints"
 }
 
 combined_data <-
@@ -463,6 +463,11 @@ combined_data <-
                    umap_n_neighbors = 30,
                    neighbor_k_param = 20,
                    resolution = 1)
+
+combined_data$group_name <-
+    factor(combined_data$group_name,
+           levels = c("Mouse control lung",
+                      "Stromal combined timepoints"))
 
 combined_data$sample_description <-
     factor(combined_data$sample_description,
@@ -641,7 +646,7 @@ Idents(combined_data) <- combined_data$group_name
 
 overall_de <-
     FindMarkers(combined_data,
-                ident.1 = "Control lung",
+                ident.1 = "Mouse control lung",
                 logfc.threshold = 0)
 qs::qsave(overall_de,
           file = "output/rdata/overall_de.qs")
@@ -719,7 +724,7 @@ for (cell_type in unique(combined_subset$cell_type_final)) {
     cell_type_de <-
         subset(combined_subset,
                subset = cell_type_final == {{ cell_type }}) %>%
-        FindMarkers(ident.1 = "Control lung",
+        FindMarkers(ident.1 = "Mouse control lung",
                     logfc.threshold = 0,
                     min.pct = 0) %>%
         as.data.frame() %>%
@@ -793,10 +798,13 @@ for (factor_name in c("group_name", "four_groups")) {
     plot_name <-
         temp_data %>%
         left_join(cell_type_de) %>%
-        mutate(group = paste0(group_col,
+        mutate(fct_order = as.numeric(group_col),
+               group = paste0(group_col,
                               " (n=",
                               num_cells,
-                              ")"),
+                              ")") %>%
+                   factor() %>%
+                   fct_reorder(fct_order),
                p_val_adj = replace_na(p_val_adj, 1),
                sig = ifelse(p_val_adj <= 0.05,
                             "Significant",
@@ -915,10 +923,13 @@ for (factor_name in c("group_name", "four_groups")) {
     plot_name <-
         temp_data %>%
         left_join(cell_type_de) %>%
-        mutate(group = paste0(group_col,
+        mutate(fct_order = as.numeric(group_col),
+               group = paste0(group_col,
                               " (n=",
                               num_cells,
-                              ")"),
+                              ")") %>%
+                   factor() %>%
+                   fct_reorder(fct_order),
                p_val_adj = replace_na(p_val_adj, 1),
                sig = ifelse(p_val_adj <= 0.05,
                             "Significant",
@@ -931,7 +942,7 @@ for (factor_name in c("group_name", "four_groups")) {
                   width = 0.9,
                   height = 0.9) +
         geom_text(aes(label = sprintf("%.1f%%", pct_expr * 100)),
-                  size = 2,
+                  size = 1.5,
                   color = "lightgray") +
         facet_wrap(~ cell_type, nrow = 1, scales = "free_x") +
         labs(x = "",
@@ -1006,6 +1017,11 @@ downsample_human_combined <-
     theme(plot.title = element_text(hjust = 0.5)) +
     coord_fixed()
 
+ggsave("output/figures/downsample_human_combined.pdf",
+       width = 6,
+       height = 6,
+       plot = downsample_human_combined)
+
 #split by
 downsample_human_split <-
     DimPlot(downsample_umap_human_only, split.by = "group") +
@@ -1013,12 +1029,6 @@ downsample_human_split <-
             theme(plot.title = element_text(hjust = 0.5)) +
             NoLegend() +
             coord_fixed()
-
-#save the plot
-ggsave("output/figures/downsample_human_combined.pdf",
-       width = 6,
-       height = 6,
-       plot = downsample_human_combined)
 
 ggsave("output/figures/downsample_human_split.pdf",
        width = 12,
@@ -1085,7 +1095,9 @@ downsample_mouse_combined <-
 
 #split by
 downsample_mouse_split <-
-            DimPlot(downsample_umap_mouse_only, split.by = "four_groups") +
+            DimPlot(downsample_umap_mouse_only,
+                    group.by = "cell_type_final",
+                    split.by = "group") +
             theme_robert() +
             theme(plot.title = element_text(hjust = 0.5)) +
             NoLegend() +
@@ -1191,17 +1203,10 @@ mouse_umaps$data$group <- factor(x = mouse_umaps$data$group,
                                         "Midpoint_mouse_stroma",
                                         "Late_mouse_stroma"))
 
-mouse_umaps
-
-combined_human_only
-
 combined_plots <- (human_umaps / mouse_umaps)
-combined_plots
 
 combined_plots_all <- (combined_human_only + (human_umaps / mouse_umaps))
                          + plot_layout(widths = c(1, 4))
-combined_plots_all
-
 
 #save the plot
 ggsave("output/figures/combined_human_only.pdf",
