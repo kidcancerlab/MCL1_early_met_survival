@@ -39,6 +39,54 @@ library(msigdbr)
 set.seed(888)
 ```
 
+## Helper functions
+```{r helper_functions}
+theme_robert <- function(axis_font_size = 5,
+                         axis_title_font_size = 8,
+                         facet_font_size = 5,
+                         font_name = "Arial",
+                         legend_key_size = "0.2",
+                         legend_text_font_size = 5,
+                         legend_title_font_size = 6,
+                         subtitle_font_size = 6,
+                         title_font_size = 10) {
+    if (font_name == "Arial" &
+        !"Arial" %in% names(grDevices::pdfFonts())) {
+        #    !"Arial" %in% sysfonts::font_families()) {
+        message("Adding Arial font to system")
+        tryCatch(
+            {
+                extrafont::font_import(paths = "/home/gdrobertslab/lab/Tools/fonts/Arial/",
+                                       prompt = FALSE)
+                extrafont::loadfonts(quiet = TRUE)
+            },
+                error = function(e) {
+                    message("Arial font files not found in /home/gdrobertslab/lab/Tools/fonts/Arial/")
+                    message("Either use a different font or install Arial")
+                    print(e)
+            }
+        )
+    }
+    list(ggplot2::theme(
+            axis.text = ggplot2::element_text(size = axis_font_size),
+            axis.title = ggplot2::element_text(size = axis_title_font_size),
+            plot.title = ggplot2::element_text(size = title_font_size,
+                                               face = "bold",
+                                               hjust = 0.5),
+            strip.text = ggplot2::element_text(size = facet_font_size,
+                                               face = "bold"),
+            plot.subtitle = ggplot2::element_text(hjust = 0.5,
+                                                  size = subtitle_font_size),
+            legend.text = ggplot2::element_text(size = legend_text_font_size),
+            legend.title = ggplot2::element_text(size = legend_title_font_size,
+                                                 face = "bold"),
+            strip.background = ggplot2::element_blank(),
+            legend.key.size = ggplot2::unit(0.2, "cm"),
+            legend.position = "top"),
+    ggplot2::scale_color_manual(values = plot_cols))
+}
+```
+
 ## Make up directory structure
 ```{bash mkdirs, eval=FALSE}
 for directoryName in \
@@ -205,7 +253,7 @@ plot_name <-
             cols = plot_cols[seq_along(sobj_list)],
             pt.size = 0.01,
             order = FALSE) +
-    theme_roberts() +
+    theme_robert() +
     labs(title = NULL)
 
 plot_name
@@ -214,8 +262,6 @@ ggsave("output/figures/umap_all_samples.pdf",
        width = 4,
        height = 6,
        plot = plot_name)
-
-
 ```
 
 ## Human Cell Only Processing
@@ -244,8 +290,15 @@ tumor <-
     FindClusters(resolution = 0.15, k.param = 30) %>%
     RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
 
+tumor$group <-
+    factor(str_replace_all(tumor$group, "_", " "),
+           levels = c("Primary tumor",
+                      "Early metastatic tumor",
+                      "Midpoint metastatic tumor",
+                      "Late metastatic tumor"))
+
 # Save human mCherry+ merged object
-save(tumor, file = "output/rdata/d14_d28_tumor.RData")
+qs::qsave(tumor, file = "output/rdata/human_tumor.qs")
 
 # Use timepoint naming (Day 14/Day 28) for UMAP plotting
 umap_timepoint <-
@@ -255,7 +308,7 @@ umap_timepoint <-
         label = TRUE)
 umap_timepoint
 
-pdf("output/figures/d14_d28_umap.pdf",
+pdf("output/figures/human_umap_timepoint.pdf",
     width = 5,
     height = 5)
 umap_timepoint
@@ -270,7 +323,7 @@ umap_group <-
         repel = TRUE)
 umap_group
 
-pdf("output/figures/d14_d28_umap.pdf",
+pdf("output/figures/human_umap_group.pdf",
     width = 5,
     height = 5)
 umap_group
@@ -304,7 +357,7 @@ gene_list <-
 dot_plot <-
     DotPlot(tumor,
             features = gene_list,
-            group.by = "timepoint",
+            group.by = "group",
             scale = FALSE,
             cols = c("lightgoldenrod", "darkred")) +
   RotatedAxis() +
@@ -321,7 +374,7 @@ dev.off()
 vln_plot <-
     VlnPlot(tumor,
             features = gene_list,
-            group.by = "timepoint") +
+            group.by = "group") +
     RotatedAxis()
 
 # Save as pdf
@@ -335,13 +388,13 @@ dev.off()
 feature_plot <-
     FeaturePlot(tumor,
                 features = gene_list,
-                split.by = "timepoint",
+                split.by = "group",
                 order = TRUE)
 
 # Save as pdf
 pdf("output/figures/early_late_feature_plot.pdf",
-    width = 6,
-    height = 12)
+    width = 15,
+    height = 18)
 feature_plot
 dev.off()
 ```
@@ -375,7 +428,7 @@ DimPlot(tumor_cc,
         group.by = "Phase",
         label = TRUE,
         pt.size = 1) +
-    theme_roberts()
+    theme_robert()
 
 # Save as pdf
 pdf("output/figures/early_late_post-kill_cc.pdf",
@@ -385,7 +438,7 @@ DimPlot(tumor_cc,
         group.by = "Phase",
         label = TRUE,
         pt.size = 1) +
-    theme_roberts()
+    theme_robert()
 dev.off()
 
 # Plot tumor UMAP by timepoint post cell cycle regression
@@ -394,7 +447,7 @@ umap_cc <-
             pt.size = 1,
             label = TRUE,
             group.by = "timepoint") +
-    theme_roberts() +
+    theme_robert() +
     theme(aspect.ratio = 1)
 umap_cc
 
@@ -645,38 +698,6 @@ qs::qsave(overall_de,
           file = "output/rdata/overall_de.qs")
 ```
 
-### Plot cell types of mouse cells
-```{r mouse_ref_labels}
-# set.seed(1337)
-# celltype_mouse_plot <-
-#     DimPlot(combined_data,
-#             group.by = "cell_type_final",
-#             split.by = "group",
-#             label = TRUE,
-#             repel = TRUE) +#,
-#     #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
-#         NoLegend()
-
-# celltype_mouse_plot_all <-
-#     DimPlot(combined_data,
-#             group.by = "cell_type_final",
-#             label = TRUE,
-#             repel = TRUE) +#,
-#     #        cols = sample(rainbow(n = length(unique(combined_data$cell_type))))) +
-#         NoLegend()
-
-# two_plots <-
-#     wrap_plots(celltype_mouse_plot_all,
-#                celltype_mouse_plot,
-#                ncol = 2,
-#                widths = c(1, 4))
-
-# ggsave("output/figures/mouse_umaps_celltype_2.pdf",
-#        width = 20,
-#        height = 8,
-#        plot = two_plots)
-```
-
 ### Count cell types
 ```{r deGrowthFactorMetsCellType, dependson='deGrowthFactorMetsDE'}
 cell_type_list <-
@@ -689,6 +710,9 @@ cell_type_list <-
 
 ### Make supplemental figures with all cell types
 ```{r deGrowthFactorMetsLoop, dependson='deGrowthFactorMetsCellType'}
+overall_de <-
+    qs::qread("output/rdata/overall_de.qs")
+
 target_genes <-
     read_tsv("misc/growth_factor_genes.txt",
              col_names = "human_gene",
@@ -794,7 +818,7 @@ for (factor_name in c("group_name", "four_groups")) {
                size = pct_expr)) +
         geom_point() +
         facet_wrap(~ gene, nrow = 1) +
-        theme_roberts() +
+        theme_robert() +
         scale_color_gradient(low = "white",
                              high = "darkred") +
         theme(axis.text.x = element_text(angle = 90,
@@ -842,7 +866,7 @@ for (factor_name in c("group_name", "four_groups")) {
         labs(x = "",
              y = "",
              title = paste0("Percent of Cells Expressing Select Gene")) +
-        theme_roberts() +
+        theme_robert() +
         scale_fill_continuous(labels = scales::label_percent(accuracy = 2),
                               name = "Percent of\nCells Expressing Gene") +
         scale_color_manual(values = c(plot_cols[1], alpha("black", 0)),
@@ -916,7 +940,7 @@ for (factor_name in c("group_name", "four_groups")) {
                size = pct_expr)) +
         geom_point() +
         facet_wrap(~ gene, nrow = 1) +
-        theme_roberts() +
+        theme_robert() +
         scale_color_gradient(low = "white",
                              high = "darkred") +
         theme(axis.text.x = element_text(angle = 90,
@@ -964,7 +988,7 @@ for (factor_name in c("group_name", "four_groups")) {
         labs(x = "",
              y = "",
              title = paste0("Percent of Cells Expressing Select Gene")) +
-        theme_roberts() +
+        theme_robert() +
         scale_fill_continuous(labels = scales::label_percent(accuracy = 2),
                               name = "Percent of\nCells Expressing Gene") +
         scale_color_manual(values = c(plot_cols[1], alpha("black", 0)),
@@ -983,7 +1007,7 @@ for (factor_name in c("group_name", "four_groups")) {
 }
 ```
 
-## Human Down Sampling for human
+## Human Down Sampling
 ```{r}
 #load the sobj
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
@@ -1004,50 +1028,42 @@ for (i in seq_len(length(human_objects_list))) {
     temp_obj <- temp_obj[, sample(1:current_n_cells, sub_n_cells)]
     human_objects_list[[i]] <- temp_obj
 }
-human_objects_list
-
-human_objects_list
 
 #Dimplot with down sample
 downsample_umap_human_only <-
     merge(human_objects_list[["tibia_tumor_h"]],
             y = human_objects_list[c("d14_pos_h",
-                            "d28_pos_h",
-                            "d49_pos_h")],
+                                     "d28_pos_h",
+                                     "d49_pos_h")],
             add.cell.ids = c("Primary_tumor",
-                            "Early_metastatic_tumor",
-                            "Midpoint_metastatic_tumor",
-                            "Late_metastatic_tumor"),
+                             "Early_metastatic_tumor",
+                             "Midpoint_metastatic_tumor",
+                             "Late_metastatic_tumor"),
             project = "downsample_umap_human_only") %>%
             process_seurat()
+
+downsample_umap_human_only$group <-
+    factor(str_replace_all(downsample_umap_human_only$group, "_", " "),
+           levels = c("Primary tumor",
+                      "Early metastatic tumor",
+                      "Midpoint metastatic tumor",
+                      "Late metastatic tumor"))
 
 #Dimplot
 downsample_human_combined <-
     DimPlot(downsample_umap_human_only) +
-    ggtitle(label="Primary and metastatic tumor") +
-    theme_roberts() +
+    ggtitle(label = "Primary and metastatic tumor") +
+    theme_robert() +
     theme(plot.title = element_text(hjust = 0.5)) +
     coord_fixed()
-downsample_human_combined
 
 #split by
 downsample_human_split <-
     DimPlot(downsample_umap_human_only, split.by = "group") +
-            theme_roberts() +
+            theme_robert() +
             theme(plot.title = element_text(hjust = 0.5)) +
             NoLegend() +
             coord_fixed()
-downsample_human_split
-
-#rearrange the panels for umap space
-downsample_human_split$data$group <-
-    factor(x = downsample_human_split$data$group,
-           levels = c("Primary_tumor",
-                      "Early_metastatic_tumor",
-                      "Midpoint_metastatic_tumor",
-                      "Late_metastatic_tumor"))
-
-downsample_human_split
 
 #save the plot
 ggsave("output/figures/downsample_human_combined.pdf",
@@ -1059,7 +1075,6 @@ ggsave("output/figures/downsample_human_split.pdf",
        width = 12,
        height = 4,
        plot = downsample_human_split)
-
 ```
 
 ## Mouse Down Sampling and Dimplot
@@ -1071,6 +1086,7 @@ combined_data <- qs::qread("output/rdata/combined_data.qs")
 Idents(combined_data) <- combined_data$cell_type_final
 
 #subset the combined mouse object so that you can downsample
+set.seed(4444)
 mouse_annotated_list <- list()
 for (stuff in unique(combined_data$obj_name)) {
     print(stuff)
@@ -1079,7 +1095,6 @@ for (stuff in unique(combined_data$obj_name)) {
     mouse_annotated_list[[stuff]] <- temp_obj
 }
 
-set.seed(4444)
 #Downsample
 for (i in seq_len(length(mouse_annotated_list))) {
     temp_obj <- mouse_annotated_list[[i]]
@@ -1089,47 +1104,43 @@ for (i in seq_len(length(mouse_annotated_list))) {
     mouse_annotated_list[[i]] <- temp_obj
 }
 
-mouse_annotated_list
-
 #downsampled objects are merged and seurat process for dimplot
 downsample_umap_mouse_only <-
     merge(mouse_annotated_list[["S0006_mouse"]],
             y = mouse_annotated_list[c("d14_pos_m",
-                            "d28_pos_m",
-                            "d49_pos_m")],
+                                       "d28_pos_m",
+                                       "d49_pos_m")],
             add.cell.ids = c("Mouse_control_lung",
-                            "Early_mouse_stroma",
-                            "Midpoint_mouse_stroma",
-                            "Late_mouse_stroma"),
+                             "Early_mouse_stroma",
+                             "Midpoint_mouse_stroma",
+                             "Late_mouse_stroma"),
             project = "downsample_umap_mouse_only") %>%
             process_seurat()
 
+downsample_umap_mouse_only$group <-
+    factor(str_replace_all(downsample_umap_mouse_only$group,
+                           "_",
+                           " "),
+           levels = c("Mouse control lung",
+                      "Early mouse stroma",
+                      "Midpoint mouse stroma",
+                      "Late mouse stroma"))
+
 #combined
-downsample_mouse_combined <- DimPlot(downsample_umap_mouse_only, group.by = "cell_type_final") +
-                        theme_roberts() +
-                        labs(title = "Mouse control and stroma") +
-                        theme(plot.title = element_text(hjust = 0.5)) +
-                        coord_fixed()
-downsample_mouse_combined
+downsample_mouse_combined <-
+    DimPlot(downsample_umap_mouse_only, group.by = "cell_type_final") +
+            theme_robert() +
+            labs(title = "Mouse control and stroma") +
+            theme(plot.title = element_text(hjust = 0.5)) +
+            coord_fixed()
 
 #split by
 downsample_mouse_split <-
-            DimPlot(downsample_umap_mouse_only, split.by = "group") +
-            theme_roberts() +
+            DimPlot(downsample_umap_mouse_only, split.by = "four_groups") +
+            theme_robert() +
             theme(plot.title = element_text(hjust = 0.5)) +
-            NoLegend() + coord_fixed()
-downsample_mouse_split
-
-
-#rearrange the panels for umap space
-downsample_mouse_split$data$group <-
-    factor(x = downsample_mouse_split$data$group,
-           levels = c("Mouse_control_lung",
-                      "Early_mouse_stroma",
-                       "Midpoint_mouse_stroma",
-                       "Late_mouse_stroma"))
-
-downsample_mouse_split
+            NoLegend() +
+            coord_fixed()
 
 #save the plot
 ggsave("output/figures/downsample_mouse_combined.pdf",
@@ -1142,21 +1153,18 @@ ggsave("output/figures/downsample_mouse_split.pdf",
        height = 4,
        plot = downsample_mouse_split)
 
-
 #all combined
-
 plots_all <-
     downsample_human_combined + downsample_human_split +
     downsample_mouse_combined + downsample_mouse_split +
     plot_layout(widths = c(1, 4))
-plots_all
 
 #save the plot
 ggsave("output/figures/plots_all.pdf",
-       width = 16,
-       height = 4,
+       width = 10,
+       height = 6,
        plot = plots_all)
-
+```
 
 ## Non-downsample UMAP plots
 ```{r}
@@ -1181,7 +1189,7 @@ umap_human_only <-
 combined_human_only <-
     DimPlot(umap_human_only) +
     ggtitle(label = "Primary and metastatic tumor") +
-    theme_roberts() +
+    theme_robert() +
     theme(plot.title = element_text(hjust = 0.5)) +
     coord_fixed()
 
@@ -1189,19 +1197,17 @@ combined_human_only
 
 #Dimplot
 human_umaps <- DimPlot(umap_human_only, split.by = "group") +
-            theme_roberts() +
+            theme_robert() +
             theme(plot.title = element_text(hjust = 0.5)) +
             NoLegend() + coord_fixed()
 
-human_umaps
-
 #rearrange the panels for umap space
-human_umaps$data$group <- factor(x = human_umaps$data$group,
-                                levels = c("Primary_tumor",
-                                        "Early_metastatic_tumor",
-                                        "Midpoint_metastatic_tumor",
-                                        "Late_metastatic_tumor"))
-human_umaps
+human_umaps$data$group <-
+    factor(x = human_umaps$data$group,
+           levels = c("Primary_tumor",
+                      "Early_metastatic_tumor",
+                      "Midpoint_metastatic_tumor",
+                      "Late_metastatic_tumor"))
 
 #for mouse
 umap_mouse_only <-
@@ -1218,18 +1224,16 @@ umap_mouse_only <-
 
 #Dimplot
 mouse_umaps_combined <- DimPlot(umap_mouse_only) +
-                        theme_roberts() +
+                        theme_robert() +
                         theme(plot.title = element_text(hjust = 0.5)) +
                         NoLegend() +
                         coord_fixed()
 
 mouse_umaps <- DimPlot(umap_mouse_only, split.by = "group") +
-               theme_roberts() +
+               theme_robert() +
                theme(plot.title = element_text(hjust = 0.5)) +
                NoLegend() +
                coord_fixed()
-
-mouse_umaps
 
 #rearrange the panels for umap space
 mouse_umaps$data$group <- factor(x = mouse_umaps$data$group,
@@ -1450,16 +1454,16 @@ path_top_5 <-
     slice_head(n = 5) %>%
     select(sample, pathway, z_score) %>%
     mutate(order = seq_len(n()),
-        label_y = z_score / abs(z_score),
-        sample = str_remove(sample, "_tumor$") %>%
-            str_replace_all("metastatic", "metastasis") %>%
-            str_replace("tumor", "vs") %>%
-            str_replace_all("_", " ") %>%
-            str_to_sentence() %>%
-            factor(., levels = c("Primary vs early metastasis",
-                "Early metastasis vs midpoint metastasis",
-                "Midpoint metastasis vs late metastasis",
-                "Late metastasis vs primary"))) %>%
+           label_y = z_score / abs(z_score),
+           sample = str_remove(sample, "_tumor$") %>%
+                str_replace_all("metastatic", "metastasis") %>%
+                str_replace("tumor", "vs") %>%
+                str_replace_all("_", " ") %>%
+                str_to_sentence() %>%
+                factor(., levels = c("Primary vs early metastasis",
+                                     "Early metastasis vs midpoint metastasis",
+                                     "Midpoint metastasis vs late metastasis",
+                                     "Late metastasis vs primary"))) %>%
     ungroup()
 
 two_way_plot <- function(data) {
@@ -1497,7 +1501,7 @@ two_way_plot <- function(data) {
                       fontface = "bold",
                       size = 1.5) +
             scale_fill_manual(values = plot_cols) +
-            # theme_roberts(title_font_size = 5,
+            # theme_robert(title_font_size = 5,
             #               axis_font_size = 4) +
             theme(strip.background = element_rect(color = "white",
                                                   fill = "white"),
