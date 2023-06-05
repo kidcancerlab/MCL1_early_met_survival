@@ -103,70 +103,6 @@ do
 done
 ```
 
-### Get cell type reference datasets
-GSE151974
-```{r mouse_refs}
-ref_path <- "/home/gdrobertslab/lab/GenRef/sc_ref_datasets/mouse"
-
-if (file.exists(paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))){
-    mouse_lung_ref <- qs::qread(paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))
-} else {
-    data_matrix <-
-        read.csv(paste0(ref_path,
-                        "/GSE151974/GSE151974_raw_umi_matrix_postfilter.csv.gz"),
-                header = TRUE) %>%
-        column_to_rownames("X")
-
-    metadata <-
-        read.csv(paste0(ref_path,
-                        "/GSE151974/GSE151974_cell_metadata_postfilter.csv.gz"),
-                header = TRUE) %>%
-        column_to_rownames("X")
-
-    mouse_lung_ref <-
-        CreateSeuratObject(counts = data_matrix,
-                        project = "mouse_lung_ref",
-                        meta.data = metadata) %>%
-        subset(Oxygen == "Normoxia")
-
-    mouse_lung_ref$cell_type <- mouse_lung_ref$CellType
-    mouse_lung_ref$dataset <- "GSE151974"
-
-    qs::qsave(mouse_lung_ref,
-            file = paste0(ref_path, "/GSE151974/mouse_lung_ref.qs"))
-
-}
-
-mouse_immune <- celldex::ImmGenData()
-# This label is not informative
-mouse_immune <-
-    mouse_immune[mouse_immune$label.main != "Stromal cells", ]
-
-mouse_rna <- celldex::MouseRNAseqData()
-```
-
-## Function to use for cell annotation
-```{r annotate_cells_fun}
-annot_cells <- function(sobject) {
-    cell_assign <-
-        SingleR::SingleR(as.SingleCellExperiment(sobject),
-                         ref = list(GetAssayData(mouse_lung_ref),
-                                    mouse_immune,
-                                    mouse_rna),
-                         labels = list(mouse_lung_ref$cell_type,
-                                       mouse_immune$label.main,
-                                       mouse_rna$label.fine),
-                         aggr.ref = TRUE)
-
-    sobject$cell_type <- cell_assign$labels
-
-    sobject$cell_score <- cell_assign$scores %>%
-        apply(MARGIN = 1, function(x) max(x, na.rm = TRUE))
-
-    return(sobject)
-}
-```
-
 # Load and Process Datasets
 Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
 ```{r load}
@@ -218,12 +154,6 @@ sobj_list <- parallel::mclapply(seq_len(nrow(sample_list)), function(i) {
                nCount_RNA <= sample_list$ncount_rna_max[i] &
                percent.mt <= sample_list$mt_max[i]) %>%
         process_seurat()
-
-    # Add cell type annotation if mouse
-    if (species_pattern == "^mm10_") {
-        sobj <-
-            annot_cells(sobj)
-    }
 
     message(paste("Sample", i, "completed"))
     return(sobj)
