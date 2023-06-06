@@ -890,19 +890,23 @@ for (factor_name in c("group_name", "four_groups")) {
                   pct_expr = sum(expression > 0) / n(),
                   num_cells = n(),
                   .groups = "drop") %>%
-        mutate(gene_group = paste(gene, group_col, sep = "\n"))
+        mutate(gene_group = paste(gene, group_col, sep = "\n")) %>%
+        group_by(gene) %>%
+        mutate(norm_expr = scale(expr_mean, center = FALSE))
 
     plot_name <-
         ggplot(temp_data,
            aes(x = group_col,
                y = cell_type,
-               color = expr_mean,
+               color = norm_expr,
                size = pct_expr)) +
         geom_point() +
         facet_wrap(~ gene, nrow = 1) +
         theme_robert() +
         scale_color_gradient(low = "white",
-                             high = "darkred") +
+                             high = "darkred",
+                             name = "Normalized\nexpression") +
+        scale_size_continuous(name = "% of cells\nexpressing gene") +
         theme(axis.text.x = element_text(angle = 90,
                                          hjust = 1,
                                          vjust = 0.5),
