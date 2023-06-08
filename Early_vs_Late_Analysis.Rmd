@@ -871,19 +871,23 @@ for (factor_name in c("group_name", "four_groups")) {
                   pct_expr = sum(expression > 0) / n(),
                   num_cells = n(),
                   .groups = "drop") %>%
-        mutate(gene_group = paste(gene, group_col, sep = "\n"))
+        mutate(gene_group = paste(gene, group_col, sep = "\n")) %>%
+        group_by(gene) %>%
+        mutate(norm_expr = scale(expr_mean, center = FALSE))
 
     plot_name <-
         ggplot(temp_data,
            aes(x = group_col,
                y = cell_type,
-               color = expr_mean,
+               color = norm_expr,
                size = pct_expr)) +
         geom_point() +
         facet_wrap(~ gene, nrow = 1) +
         theme_robert() +
         scale_color_gradient(low = "white",
-                             high = "darkred") +
+                             high = "darkred",
+                             name = "Normalized\nexpression") +
+        scale_size_continuous(name = "% of cells\nexpressing gene") +
         theme(axis.text.x = element_text(angle = 90,
                                          hjust = 1,
                                          vjust = 0.5),
@@ -1212,6 +1216,75 @@ ggsave("output/figures/combined_plots_all.pdf",
 ```
 
 
+## GSEA_KEGG
+GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from:
+                  S0037 (primary) redo human cells to S0082(early) human cells
+                  S0082 (early) human cell to S0084(midpoint) human cells
+                  S0084(midpoint) human cells to S0093 (late) human cells
+                  S0082(early) human cells to S0093(late) human cells
+### Run DE for KEGG
+```{r}
+sobj_list <- qs::qread("output/rdata/sobj_list.qs")
+#we want all of the item in the same space, do combine and run process seurat
+human_only <-
+    merge(sobj_list[["tibia_tumor_h"]],
+          y = sobj_list[c("d14_pos_h",
+                          "d28_pos_h",
+                          "d49_pos_h")],
+          add.cell.ids = c("Primary_tumor",
+                           "Early_metastatic_tumor",
+                           "Midpoint_metastatic_tumor",
+                           "Late_metastatic_tumor"),
+          project      =   "human_only") %>%
+          process_seurat()
+
+#set the idents
+Idents(human_only) <- "group"
+
+#make a table to do the find markers in loop
+marker_table <-
+    tribble(~item1,                      ~item2,                        ~cmp,
+            "Primary_tumor",             "Early_metastatic_tumor",      "Primary_tumor_vs_Early_metastatic_tumor",
+            "Early_metastatic_tumor",    "Midpoint_metastatic_tumor",   "Early_metastatic_tumor_vs_Midpoint_metastatic_tumor",
+            "Early_metastatic_tumor",    "Late_metastatic_tumor",       "Early_metastatic_tumor_vs_Late_metastatic_tumor",
+            "Midpoint_metastatic_tumor", "Late_metastatic_tumor",       "Midpoint_metastatic_tumor_vs_Late_metastatic_tumor",
+            "Late_metastatic_tumor",     "Primary_tumor",               "Late_metastatic_tumor_vs_Primary_tumor",
+            "Early_metastatic_tumor",    c("Midpoint_metastatic_tumor",
+                                           "Late_metastatic_tumor"),    "Early_vs_Mid_Late",
+            "Early_metastatic_tumor",    c("Midpoint_metastatic_tumor",
+                                           "Late_metastatic_tumor",
+                                           "Primary_tumor"),            "Early_vs_Mid_Late_Primary")
+
+
+#make a list that you can append to
+#FindMarkers since we comaring across only two groups
+gsea_lists <-
+    parallel::mclapply(1:nrow(marker_table), function(i) {
+        df <- FindMarkers(human_only,
+                          ident.1 = marker_table$item1[[i]],
+                          ident.2 = marker_table$item2[[i]],
+                          min.pct = 0.1,
+                          logfc.threshold = 0) %>%
+            rownames_to_column("gene")
+        filename1 <-
+            paste0("output/de/",
+                   marker_table$cmp[[i]],
+                   ".tsv")
+        write_tsv(as.data.frame(df), file = filename1)
+        return(df)
+    }, mc.cores = parallelly::availableCores())
+
+names(gsea_lists) <- marker_table$cmp
+
+# Drop Early_vs_Mid_Late since we're just using this for IPA
+gsea_lists <-
+    gsea_lists[!names(gsea_lists) %in% c("Early_vs_Mid_Late",
+                                         "Early_vs_Mid_Late_Primary")]
+
+qs::qsave(gsea_lists, file = "output/rdata/gsea_gene_lists.qs")
+```
+
+
 ## Ran IPA on the output of FindMarkers above
 Used a logFC cutoff of -1/1 and p_val_adj cutoff of 0.05
 ```{r plotIPA}
@@ -1252,9 +1325,12 @@ path_top_5 <-
                                      "Late metastasis vs primary"))) %>%
     ungroup()
 
-two_way_plot <- function(data, x_col = "z_score") {
+two_way_plot <- function(data,
+                         x_col = "z_score",
+                         ylim = c(-5, 5),
+                         lab_y = 3) {
     lab4plot <-
-        tibble(y = c(-3, 3),
+        tibble(y = c(-lab_y, lab_y),
             x = c(0.2, 0.2),
             label = as.factor(c(paste("Upregulated in",
                 stringr::str_remove(data$sample[1], ".+vs") %>%
@@ -1280,7 +1356,7 @@ two_way_plot <- function(data, x_col = "z_score") {
                           y = y_pos,
                           hjust = justify_y,
                           label = pathway),
-                      size = 1) +
+                      size = 1.5) +
             geom_text(data = lab4plot,
                       aes(x = x,
                           y = y,
@@ -1293,11 +1369,13 @@ two_way_plot <- function(data, x_col = "z_score") {
             theme(panel.grid.major = element_blank(),
                   panel.grid.minor = element_blank(),
                   panel.border = element_blank(),
+                  axis.ticks.y = element_blank(),
+                  axis.text.y = element_blank(),
                   axis.line.x = element_line(color = "black")) +
             labs(title = data$sample[1],
                  y = "",
                  x = "") +
-            ylim(-5, 5)
+            ylim(ylim)
 
     return(plot_name)
 }
@@ -1315,66 +1393,46 @@ wrap_plots(plot_list, ncol = 1, heights = c(5, 5, 0.75, 1.22))
 dev.off()
 ```
 
-## GSEA_KEGG
-GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from:
-                  S0037 (primary) redo human cells to S0082(early) human cells
-                  S0082 (early) human cell to S0084(midpoint) human cells
-                  S0084(midpoint) human cells to S0093 (late) human cells
-                  S0082(early) human cells to S0093(late) human cells
-### Run DE for KEGG
-```{r}
-sobj_list <- qs::qread("output/rdata/sobj_list.qs")
-#we want all of the item in the same space, do combine and run process seurat
-human_only <-
-    merge(sobj_list[["tibia_tumor_h"]],
-          y = sobj_list[c("d14_pos_h",
-                          "d28_pos_h",
-                          "d49_pos_h")],
-          add.cell.ids = c("Primary_tumor",
-                           "Early_metastatic_tumor",
-                           "Midpoint_metastatic_tumor",
-                           "Late_metastatic_tumor"),
-          project      =   "human_only") %>%
-          process_seurat()
+```{r plotIPA2}
+dis_functs <-
+    read_tsv("output/pathway_analysis/Early_vs_Mid_Late_dis_functs.txt",
+         col_names = c("category",
+                       "dis_funct",
+                       "pval",
+                       "predict",
+                       "act_score",
+                       "genes",
+                       "num_genes"),
+         show_col_types = FALSE,
+         skip = 1) %>%
+    mutate(sample = "Early vs Established Metastasis") %>%
+    select(-category, -num_genes) %>%
+    filter(pval <= 0.05 &
+           !is.nan(act_score) &
+           abs(act_score) >= 0 &
+           !is.na(predict)) %>%
+    arrange(sample, pval) %>%
+    mutate(sample = str_remove(sample, ".+/") %>%
+               str_remove("_dis_functs.txt")) %>%
+    group_by(sample, act_score > 0) %>%
+    slice_head(n = 5) %>%
+    group_by(sample) %>%
+    arrange(desc(act_score), .by_group = TRUE) %>%
+    mutate(order = seq_len(n()),
+           justify_y = if_else(act_score > 0, 1, 0),
+           y_pos = if_else(act_score > 0, -0.1, 0.1)) %>%
+    ungroup() %>%
+    rename(pathway = dis_funct)
 
-#set the idents
-Idents(human_only) <- "group"
-
-#make a table to do the find markers in loop
-marker_table <-
-    tribble(~item1,                      ~item2,
-            "Primary_tumor",             "Early_metastatic_tumor",
-            "Early_metastatic_tumor",    "Midpoint_metastatic_tumor",
-            "Midpoint_metastatic_tumor", "Late_metastatic_tumor",
-            "Late_metastatic_tumor",     "Primary_tumor")
-
-#make a list that you can append to
-# markers_list <- list()
-# gsea_gene_lists <- list()
-#FindMarkers since we comaring across only two groups
-gsea_lists <-
-    parallel::mclapply(1:nrow(marker_table), function(i) {
-        df <- FindMarkers(human_only,
-            ident.1 = marker_table$item1[i],
-            ident.2 = marker_table$item2[i],
-            min.pct = 0.1,
-            logfc.threshold = 0)
-        filename1 <-
-            paste0("output/de/",
-                   marker_table$item1[i],
-                   "_",
-                   marker_table$item2[i],
-                   ".tsv")
-        write_tsv(as.data.frame(df), file = filename1)
-        return(df)
-    }, mc.cores = parallelly::availableCores())
-
-names(gsea_lists) <-
-    paste0(marker_table$item1,
-           "_vs_",
-           marker_table$item2)
-
-qs::qsave(gsea_lists, file = "output/rdata/gsea_gene_lists.qs")
+pdf("output/figures/IPA_dis_funct_early_vs_midlate.pdf",
+    width = 4,
+    height = 4)
+two_way_plot(dis_functs,
+             x_col = "act_score",
+             ylim = c(-6, 6),
+             lab_y = 3) +
+    theme(legend.position = "none")
+dev.off()
 ```
 
 ### Running the GSEA_KEGG for each pathway category
