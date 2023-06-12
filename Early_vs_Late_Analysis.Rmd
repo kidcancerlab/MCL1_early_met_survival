@@ -609,7 +609,8 @@ r_feature_plot(combined_data,
 ```
 
 ### Final cell type assignment
-```{r assignCellTypes}
+
+The following was run previously to establish the cell types within the stromal populations based on the preceding analysis:
 cell_assignments <-
     read_csv("misc/macrophage_cell_type.csv",
              show_col_types = FALSE) %>%
@@ -618,6 +619,24 @@ cell_assignments <-
 combined_data <-
     RenameIdents(combined_data, cell_assignments)
 combined_data$cell_type_final <- Idents(combined_data)
+
+cell_type_assignments <- combined_data$cell_type_final %>%
+    as.data.frame() %>%
+    rownames_to_column(var = "cell_id") %>%
+    as_tibble()
+
+saveRDS(cell_type_assignments, file = "misc/cell_type_assignments")
+
+In the final step, assignments were saved by cell ID to avoid erors related to future changes in clustering.
+
+```{r assignCellTypes}
+cell_type_assignments <- readRDS(file = "misc/cell_type_assignments")
+
+cell_type_assignments <- left_join(
+    tibble(cell_id = names(combined_data$cell_type_final)),
+    cell_type_assignments)
+
+combined_data$cell_type_final <- cell_type_assignments$assignment
 
 qs::qsave(combined_data,
           file = "output/rdata/combined_data.qs")
@@ -955,8 +974,8 @@ for (factor_name in c("group_name", "four_groups")) {
 }
 ```
 
-## Human Down Sampling
-```{r}
+## Human Down Sampling for human
+```{r human_downsample}
 #load the sobj
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 
@@ -1025,7 +1044,7 @@ ggsave("output/figures/downsample_human_split.pdf",
 ```
 
 ## Mouse Down Sampling and Dimplot
-```{r}
+```{r mouse_downsample}
 #subset human only
 sobj_list <- qs::qread("output/rdata/sobj_list.qs")
 combined_data <- qs::qread("output/rdata/combined_data.qs")
