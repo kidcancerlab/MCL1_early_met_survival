@@ -104,7 +104,7 @@ done
 ```
 
 # Load and Process Datasets
-Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints. mCherry was used to label the tumor cells as well as the surrounding niche cells.
+Datasets are from tumors collected from mouse lungs at early (day 14 post injection of tumor cells) and late (day 35 post injection of tumor cells) timepoints and at the time of injection. mCherry was used to label the tumor cells as well as the surrounding niche cells.
 ```{r load}
 sample_list <- read_tsv("misc/sample_cutoffs.txt", show_col_types = FALSE)
 
