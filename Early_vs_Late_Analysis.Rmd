@@ -260,9 +260,9 @@ umap_group
 dev.off()
 
 # Reorder the group metadata variable
-tumor$group[tumor$group == "Early_metastatic_tumor"] <- "Early"
-tumor$group[tumor$group == "Midpoint_metastatic_tumor"] <- "Established"
-tumor$group[tumor$group == "Primary_tumor"] <- "Primary"
+tumor$group[tumor$group == "Early metastatic tumor"] <- "Early"
+tumor$group[tumor$group == "Midpoint metastatic tumor"] <- "Established"
+tumor$group[tumor$group == "Primary tumor"] <- "Primary"
 tumor$group <- factor(tumor$group, levels = c("Primary", "Early", "Established"))
 
 umap_group_split <-
@@ -302,6 +302,36 @@ pdf("output/figures/early_late_dot_plot.pdf",
     height = 4)
 dot_plot
 dev.off()
+
+dot_plot <-
+    DotPlot(tumor,
+            features = gene_list[1:3],
+            group.by = "group",
+            scale = FALSE,
+            cols = c("lightgoldenrod", "darkred")) +
+  RotatedAxis() +
+  coord_fixed() +
+  scale_y_discrete(limits = rev) +
+  labs(y = NULL,
+       x = NULL) +
+  DotPlot(tumor,
+            features = gene_list[4],
+            group.by = "group",
+            scale = FALSE,
+            cols = c("lightgoldenrod", "darkred")) +
+  RotatedAxis() +
+  coord_fixed() +
+  scale_y_discrete(limits = rev) +
+  labs(y = NULL,
+       x = NULL)
+
+# Save as pdf
+pdf("output/figures/early_late_dot_plot.pdf",
+    width = 7,
+    height = 4)
+dot_plot
+dev.off()
+
 
 # Violin plot of expression of genes of interest by group (early/late)
 vln_plot <-
