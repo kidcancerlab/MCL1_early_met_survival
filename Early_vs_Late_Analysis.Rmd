@@ -638,6 +638,25 @@ cell_type_assignments <- left_join(
 
 combined_data$cell_type_final <- cell_type_assignments$assignment
 
+cell_type_markers <- c(
+    "Sftpc", "Cldn18", "Ager", # Epithelial
+    "Pdpn", "Upk3b", "Cdh2", # Mesothelial
+    "Nkg7", "Klrd1", "Gzma", # NK
+    "Zbtb46", "Il12b", "Serpinb9", # Dendritic
+    "Gsn", "Mfap4", "Lum", # Fibroblast
+    "Plac8", "S100a4", "Ly6c2", # Monocyte
+    "Cstb", "Spp1", "Fn1", # Interstitial Mac
+    "Ms4a4c", "Irf7", # TIM
+    "Cd36", "Pecam1", "Cd93", # Endothelial
+    "Ccl8", "C1qa", "C1qb", "TAM", # TAM
+    "Tcf7l2", "Axl", "Siglecf" # Alveolar Mac
+)
+
+DotPlot(combined_data, features = cell_type_markers,
+    cols = c("lightgoldenrod", "darkred")) +
+    theme(axis.text.x = element_text(
+        angle = 90, vjust = 0))
+
 qs::qsave(combined_data,
           file = "output/rdata/combined_data.qs")
 ```
