@@ -303,6 +303,140 @@ pdf("output/figures/early_late_dot_plot.pdf",
 dot_plot
 dev.off()
 
+expr_data <-
+    GetAssayData(tumor) %>%
+    as.matrix() %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    filter(gene %in% gene_list) %>%
+    as_tibble() %>%
+    pivot_longer(-gene,
+                 names_to = "cell",
+                 values_to = "expression") %>%
+    mutate(sample = str_remove(cell, "_.*")) %>%
+    left_join(tumor@meta.data %>%
+                rownames_to_column("cell") %>%
+                mutate(sample = str_remove(cell, "_.*")) %>%
+                select(sample, group) %>%
+                distinct()) %>%
+    group_by(group, gene) %>%
+    summarize(mean_expr = mean(expression),
+              pct_expr = sum(expression > 0) / n(),
+              .groups = "drop") %>%
+    mutate(gene_group = if_else(gene == "MCL1",
+                           "MCL1",
+                           "BCL2 family"),
+           group = factor(group,
+                          levels = c("Primary tumor",
+                                     "Early metastatic tumor",
+                                     "Midpoint metastatic tumor",
+                                     "Late metastatic tumor")))
+
+bcl_dotplot <- function(data) {
+    plot_name <-
+        ggplot(data,
+               aes(x = gene,
+                   y = group,
+                   size = pct_expr,
+                   color = mean_expr)) +
+        geom_point() +
+        theme_robert() +
+        scale_color_gradient(low = "lightgoldenrod",
+                            high = "darkred",
+                            name = "Mean expr") +
+        scale_size_continuous(limits = c(0, 1),
+                              name = "% cells expr") +
+        theme(panel.grid.major = element_blank(),
+              legend.box = "vertical",
+              legend.key.width = unit(15, "points")) +
+        labs(x = "",
+             y = "") +
+        scale_y_discrete(limits = rev)
+
+    return(plot_name)
+}
+
+split_dotplot <-
+    cowplot::plot_grid(bcl_dotplot(expr_data),
+                       bcl_dotplot(subset(expr_data, gene_group == "MCL1")) +
+                            theme(axis.text.y = element_blank()),
+                    align = "h",
+                    rel_widths = c(1, 0.5))
+
+# Save as pdf
+pdf("output/figures/early_late_split_dot_plot.pdf",
+    width = 6,
+    height = 4)
+split_dotplot
+dev.off()
+
+expr_data <-
+    GetAssayData(tumor) %>%
+    as.matrix() %>%
+    as.data.frame() %>%
+    rownames_to_column("gene") %>%
+    filter(gene %in% gene_list) %>%
+    as_tibble() %>%
+    pivot_longer(-gene,
+                 names_to = "cell",
+                 values_to = "expression") %>%
+    mutate(sample = str_remove(cell, "_.*")) %>%
+    left_join(tumor@meta.data %>%
+                rownames_to_column("cell") %>%
+                mutate(sample = str_remove(cell, "_.*")) %>%
+                select(sample, group) %>%
+                distinct()) %>%
+    group_by(group, gene) %>%
+    summarize(mean_expr = mean(expression),
+              pct_expr = sum(expression > 0) / n(),
+              .groups = "drop") %>%
+    mutate(gene_group = if_else(gene == "MCL1",
+                           "MCL1",
+                           "BCL2 family"),
+           group = factor(group,
+                          levels = c("Primary tumor",
+                                     "Early metastatic tumor",
+                                     "Midpoint metastatic tumor",
+                                     "Late metastatic tumor")))
+
+bcl_dotplot <- function(data) {
+    plot_name <-
+        ggplot(data,
+               aes(x = gene,
+                   y = group,
+                   size = pct_expr,
+                   color = mean_expr)) +
+        geom_point() +
+        theme_robert() +
+        scale_color_gradient(low = "lightgoldenrod",
+                            high = "darkred",
+                            name = "Mean expr") +
+        scale_size_continuous(limits = c(0, 1),
+                              name = "% cells expr") +
+        theme(panel.grid.major = element_blank(),
+              legend.box = "vertical",
+              legend.key.width = unit(15, "points")) +
+        labs(x = "",
+             y = "") +
+        scale_y_discrete(limits = rev)
+
+    return(plot_name)
+}
+
+split_dotplot <-
+    cowplot::plot_grid(bcl_dotplot(expr_data),
+                       bcl_dotplot(subset(expr_data, gene_group == "MCL1")) +
+                            theme(axis.text.y = element_blank()),
+                    align = "h",
+                    rel_widths = c(1, 0.5))
+
+# Save as pdf
+pdf("output/figures/early_late_split_dot_plot.pdf",
+    width = 6,
+    height = 4)
+split_dotplot
+dev.off()
+
 dot_plot <-
     DotPlot(tumor,
             features = gene_list[1:3],
