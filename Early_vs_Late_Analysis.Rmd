@@ -227,8 +227,6 @@ tumor$group <-
                       "Midpoint metastatic tumor",
                       "Late metastatic tumor"))
 
-# Save human mCherry+ merged object
-qs::qsave(tumor, file = "output/rdata/human_tumor.qs")
 
 # Use timepoint naming (Day 14/Day 28) for UMAP plotting
 umap_timepoint <-
@@ -264,6 +262,9 @@ tumor$group[tumor$group == "Early metastatic tumor"] <- "Early"
 tumor$group[tumor$group == "Midpoint metastatic tumor"] <- "Established"
 tumor$group[tumor$group == "Primary tumor"] <- "Primary"
 tumor$group <- factor(tumor$group, levels = c("Primary", "Early", "Established"))
+
+# Save human mCherry+ merged object
+qs::qsave(tumor, file = "output/rdata/human_tumor.qs")
 
 umap_group_split <-
     r_dim_plot(tumor,
@@ -657,6 +658,8 @@ combined_data$group <-
                       "Early_mouse_stroma",
                       "Midpoint_mouse_stroma",
                       "Late_mouse_stroma"))
+
+qs::qsave(combined_data, file = "output/rdata/combined_data.qs")
 ```
 
 ## Code to try to assess stromal cell type assignment
@@ -775,6 +778,7 @@ r_feature_plot(combined_data,
 ### Final cell type assignment
 
 The following was run previously to establish the cell types within the stromal populations based on the preceding analysis:
+```{r}
 cell_assignments <-
     read_csv("misc/macrophage_cell_type.csv",
              show_col_types = FALSE) %>%
@@ -790,7 +794,7 @@ cell_type_assignments <- combined_data$cell_type_final %>%
     as_tibble()
 
 saveRDS(cell_type_assignments, file = "misc/cell_type_assignments")
-
+```
 In the final step, assignments were saved by cell ID to avoid erors related to future changes in clustering.
 
 ```{r assignCellTypes}
@@ -1318,21 +1322,7 @@ ggsave("output/figures/plots_all.pdf",
 ## Non-downsample UMAP plots
 ```{r}
 #load the sobj
-sobj_list <- qs::qread("output/rdata/sobj_list.qs")
-
-#subset the sobj of interest for human and mouse and merge
-#for human
-umap_human_only <-
-    merge(sobj_list[["tibia_tumor_h"]],
-          y = sobj_list[c("d14_pos_h",
-                            "d28_pos_h",
-                            "d49_pos_h")],
-          add.cell.ids = c("Primary_tumor",
-                            "Early_metastatic_tumor",
-                            "Midpoint_metastatic_tumor",
-                            "Late_metastatic_tumor"),
-           project = "umap_human_only") %>%
-    process_seurat()
+umap_human_only <- qs::qread("output/rdata/human_tumor.qs")
 
 #Human only combined umap: this puts them in the same space/comparable
 combined_human_only <-
@@ -1342,40 +1332,22 @@ combined_human_only <-
     theme(plot.title = element_text(hjust = 0.5)) +
     coord_fixed()
 
-combined_human_only
-
 #Dimplot
-human_umaps <- DimPlot(umap_human_only, split.by = "group") +
+human_umaps <-
+    DimPlot(umap_human_only, split.by = "group") +
             theme_robert() +
             theme(plot.title = element_text(hjust = 0.5)) +
             NoLegend() + coord_fixed()
 
-#rearrange the panels for umap space
-human_umaps$data$group <-
-    factor(x = human_umaps$data$group,
-           levels = c("Primary_tumor",
-                      "Early_metastatic_tumor",
-                      "Midpoint_metastatic_tumor",
-                      "Late_metastatic_tumor"))
-
 #for mouse
-umap_mouse_only <-
-    merge(sobj_list[["S0006_mouse"]],
-            y = sobj_list[c("d14_pos_m",
-                            "d28_pos_m",
-                            "d49_pos_m")],
-            add.cell.ids = c("Mouse_control_lung",
-                            "Early_mouse_stroma",
-                            "Midpoint_mouse_stroma",
-                            "Late_mouse_stroma"),
-            project = "umap_mouse_only") %>%
-            process_seurat()
+umap_mouse_only <- qs::qread("output/rdata/combined_data.qs")
+Idents(umap_mouse_only) <- "cell_type_final"
 
 #Dimplot
 mouse_umaps_combined <- DimPlot(umap_mouse_only) +
                         theme_robert() +
                         theme(plot.title = element_text(hjust = 0.5)) +
-                        NoLegend() +
+                        #NoLegend() +
                         coord_fixed()
 
 mouse_umaps <- DimPlot(umap_mouse_only, split.by = "group") +
@@ -1384,23 +1356,17 @@ mouse_umaps <- DimPlot(umap_mouse_only, split.by = "group") +
                NoLegend() +
                coord_fixed()
 
-#rearrange the panels for umap space
-mouse_umaps$data$group <- factor(x = mouse_umaps$data$group,
-                                levels = c("Mouse_control_lung",
-                                        "Early_mouse_stroma",
-                                        "Midpoint_mouse_stroma",
-                                        "Late_mouse_stroma"))
-
 combined_plots <- (human_umaps / mouse_umaps)
 
-combined_plots_all <- (combined_human_only + (human_umaps / mouse_umaps))
-                         + plot_layout(widths = c(1, 4))
+combined_plots_all <-
+    (combined_human_only + human_umaps + plot_layout(widths = c(1, 4))) /
+    (mouse_umaps_combined + mouse_umaps + plot_layout(widths = c(1, 4)))
 
 #save the plot
 ggsave("output/figures/combined_human_only.pdf",
        width = 6,
        height = 6,
-       plot = combined_plots)
+       plot = combined_human_only)
 
 ggsave("output/figures/combined_plots.pdf",
        width = 8,
@@ -1410,11 +1376,8 @@ ggsave("output/figures/combined_plots.pdf",
 ggsave("output/figures/combined_plots_all.pdf",
        width = 12,
        height = 6,
-       plot = combined_plots)
-
-
+       plot = combined_plots_all)
 ```
-
 
 ## GSEA_KEGG
 GSEA-KEGG figure showing upregulated genes/pathways as lesions progress from:
@@ -1436,7 +1399,14 @@ human_only <-
                            "Midpoint_metastatic_tumor",
                            "Late_metastatic_tumor"),
           project      =   "human_only") %>%
-          process_seurat()
+    NormalizeData() %>%
+    ScaleData() %>%
+    FindVariableFeatures() %>%
+    RunPCA() %>%
+    FindNeighbors(dims = 1:30) %>%
+    FindClusters(resolution = 0.15, k.param = 30) %>%
+    RunUMAP(dims = 1:30, n.neighbors = 30L, metric = "euclidean")
+
 
 #set the idents
 Idents(human_only) <- "group"
